@@ -1,0 +1,290 @@
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState, useEffect, type DragEvent } from "react";
+import { Zap, GitBranch, Bell, CheckSquare, UserPlus, PlusCircle, Wand2, Database, Mail, ArrowLeft, ClipboardList } from "lucide-react";
+import { AppShell } from "@/components/layout/AppShell";
+import { Badge } from "@/components/ui-kit";
+import { useStore, type WorkflowNode } from "@/lib/forms-store";
+import { z } from "zod";
+
+export const Route = createFileRoute("/settings/workflow-manager/$workflowId")({
+  head: () => ({ meta: [{ title: "Workflow Manager" }] }),
+  validateSearch: z.object({ fromFormId: z.string().optional() }),
+  component: WorkflowPage,
+});
+
+type PaletteItem = { id: string; label: string; type: "entry" | "condition" | "action"; Icon: typeof Bell };
+
+const PALETTE: PaletteItem[] = [
+  { id: "entry", label: "Entry Point", type: "entry", Icon: Zap },
+  { id: "condition", label: "Condition", type: "condition", Icon: GitBranch },
+  { id: "send_notification", label: "Send Notification", type: "action", Icon: Bell },
+  { id: "create_task", label: "Create Task", type: "action", Icon: CheckSquare },
+  { id: "assign_rep", label: "Assign Rep", type: "action", Icon: UserPlus },
+  { id: "create_lead_deal", label: "Create Lead/Deal", type: "action", Icon: PlusCircle },
+  { id: "transform", label: "Transform", type: "action", Icon: Wand2 },
+  { id: "external_api", label: "External API", type: "action", Icon: Database },
+  { id: "send_email", label: "Send Email", type: "action", Icon: Mail },
+  { id: "create_ticket", label: "Create Ticket", type: "action", Icon: ClipboardList },
+];
+
+const ICON_MAP: Record<string, typeof Bell> = Object.fromEntries(PALETTE.map((p) => [p.label, p.Icon]));
+
+function WorkflowPage() {
+  const { workflowId } = Route.useParams();
+  const { fromFormId } = Route.useSearch();
+  const navigate = useNavigate();
+  const store = useStore();
+  const wf = store.workflows.find((w) => w.id === workflowId);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!wf || !fromFormId) return;
+    const entryNode = wf.nodes.find((n) => n.type === "entry");
+    if (!entryNode) return;
+    store.updateWorkflow(wf.id, {
+      nodes: wf.nodes.map((n) =>
+        n.id === entryNode.id
+          ? { ...n, config: { ...n.config, entity: "Forms", formId: fromFormId } }
+          : n
+      ),
+    });
+    setSelectedId(entryNode.id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wf?.id, fromFormId]);
+
+  if (!wf) return <AppShell breadcrumb={[{ label: "Settings" }]}><div className="p-8">Not found.</div></AppShell>;
+
+  const selected = wf.nodes.find((n) => n.id === selectedId) ?? null;
+  const nodeMap = new Map(wf.nodes.map((n) => [n.id, n]));
+  const W = 1300, H = 520;
+
+  const onDragStart = (e: DragEvent<HTMLLIElement>, item: PaletteItem) => {
+    e.dataTransfer.setData("text/wc-node", JSON.stringify(item));
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const data = e.dataTransfer.getData("text/wc-node");
+    if (!data) return;
+    const item: PaletteItem = JSON.parse(data);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(8, Math.min(W - 168, e.clientX - rect.left - 80));
+    const y = Math.max(8, Math.min(H - 68, e.clientY - rect.top - 30));
+    const newNode: WorkflowNode = {
+      id: "n_" + Math.random().toString(36).slice(2, 8),
+      type: item.type,
+      label: item.label,
+      x, y,
+      config: item.type === "entry" ? { entity: "Forms", formId: store.forms[0]?.id } : {},
+    };
+    store.updateWorkflow(wf.id, { nodes: [...wf.nodes, newNode] });
+    setSelectedId(newNode.id);
+  };
+
+  const entryConfig = selected && selected.type === "entry" ? (selected.config ?? {}) : {};
+  const entity = (entryConfig as { entity?: string }).entity ?? "Forms";
+  const formId = (entryConfig as { formId?: string }).formId ?? "";
+
+  const updateSelectedConfig = (patch: Record<string, unknown>) => {
+    if (!selected) return;
+    const nodes = wf.nodes.map((n) => n.id === selected.id ? { ...n, config: { ...(n.config ?? {}), ...patch } } : n);
+    store.updateWorkflow(wf.id, { nodes });
+  };
+
+  const sourceForm = fromFormId ? store.forms.find((f) => f.id === fromFormId) : null;
+  const breadcrumb = sourceForm
+    ? [{ label: "Dashboard", to: "/forms" }, { label: "Forms", to: "/forms" }, { label: sourceForm.name, to: `/forms/builder/${sourceForm.id}` }, { label: "Workflow Manager" }]
+    : [{ label: "Dashboard", to: "/forms" }, { label: "Settings" }, { label: "Workflow Manager" }, { label: wf.name }];
+
+  return (
+    <AppShell breadcrumb={breadcrumb}>
+      <div className="flex h-full">
+        <aside className="w-60 shrink-0 border-r border-border bg-card p-4">
+          <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Drag nodes onto canvas</div>
+          <ul className="space-y-1">
+            {PALETTE.map((p) => {
+              const Icon = p.Icon;
+              return (
+                <li key={p.id} draggable onDragStart={(e) => onDragStart(e, p)}
+                    className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs hover:border-primary hover:bg-primary/5 cursor-grab active:cursor-grabbing">
+                  <Icon className="h-3.5 w-3.5 text-primary" /> {p.label}
+                </li>
+              );
+            })}
+          </ul>
+        </aside>
+        <div className="min-w-0 flex-1 overflow-auto bg-muted/20 p-6">
+          <div className="mb-4 flex items-center gap-3">
+            {sourceForm && (
+              <button
+                onClick={() => navigate({ to: "/forms/builder/$formId", params: { formId: sourceForm.id } })}
+                className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> Back to {sourceForm.name}
+              </button>
+            )}
+            <h1 className="text-xl font-semibold">{wf.name}</h1>
+            <Badge tone="primary">Active</Badge>
+          </div>
+          <div
+            className="relative rounded-xl border border-border bg-card"
+            style={{ width: W, height: H }}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+            onDrop={onDrop}
+          >
+            <svg width={W} height={H} className="absolute inset-0 pointer-events-none">
+              {wf.edges.map((e, i) => {
+                const a = nodeMap.get(e.from); const b = nodeMap.get(e.to);
+                if (!a || !b) return null;
+                const x1 = a.x + 160, y1 = a.y + 30, x2 = b.x, y2 = b.y + 30;
+                const mx = (x1 + x2) / 2;
+                return (
+                  <g key={i}>
+                    <path d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`} stroke="var(--border)" strokeWidth={2} fill="none" />
+                    {e.branch && <text x={mx} y={(y1 + y2) / 2 - 6} textAnchor="middle" fontSize="10" fill={e.branch === "true" ? "var(--primary)" : "var(--muted-foreground)"}>{e.branch.toUpperCase()}</text>}
+                  </g>
+                );
+              })}
+            </svg>
+            {wf.nodes.map((n) => {
+              const Icon = ICON_MAP[n.label] ?? (n.type === "entry" ? Zap : n.type === "condition" ? GitBranch : Bell);
+              return (
+                <button key={n.id} onClick={() => setSelectedId(n.id)}
+                  className={`absolute rounded-lg border-2 bg-card px-3 py-2 text-left text-xs shadow-sm transition-all hover:border-primary ${selectedId === n.id ? "border-primary ring-2 ring-primary/20" : "border-border"}`}
+                  style={{ left: n.x, top: n.y, width: 160 }}>
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    <Icon className="h-3.5 w-3.5 text-primary" />
+                    <span className="capitalize">{n.type}</span>
+                  </div>
+                  <div className="mt-1 text-foreground line-clamp-2">{n.label}</div>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">Tip: drag any palette item onto the canvas to add it.</p>
+        </div>
+        {selected && (
+          <aside className="w-80 shrink-0 border-l border-border bg-card p-5 animate-fade-in">
+            <div className="text-sm font-semibold">{selected.label}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Type: {selected.type}</div>
+            {selected.type === "entry" && (
+              <div className="mt-4 space-y-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Entity</span>
+                  <select
+                    value={entity}
+                    onChange={(e) => updateSelectedConfig({ entity: e.target.value, formId: e.target.value === "Forms" ? store.forms[0]?.id : undefined })}
+                    className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                  >
+                    <option>Orders</option>
+                    <option>Products</option>
+                    <option>Cart</option>
+                    <option>Forms</option>
+                  </select>
+                </label>
+                {entity === "Forms" && (
+                  <label className="block animate-fade-in">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">Form</span>
+                    <select
+                      value={formId}
+                      onChange={(e) => updateSelectedConfig({ formId: e.target.value })}
+                      className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                    >
+                      {store.forms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
+            {selected.type === "action" && selected.label === "Assign Rep" && (
+              <div className="mt-4 space-y-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Assignment Mode</span>
+                  <select
+                    value={(selected.config as Record<string, string>)?.assignMode ?? "round-robin"}
+                    onChange={(e) => updateSelectedConfig({ assignMode: e.target.value })}
+                    className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                  >
+                    <option value="round-robin">Round-Robin</option>
+                    <option value="territory">Territory-Based</option>
+                    <option value="fixed">Fixed Rep</option>
+                  </select>
+                </label>
+                {((selected.config as Record<string, string>)?.assignMode ?? "round-robin") === "fixed" && (
+                  <label className="block animate-fade-in">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">Assign To</span>
+                    <select className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none">
+                      <option>Sarah Chen</option>
+                      <option>Marcus Williams</option>
+                      <option>Emily Rodriguez</option>
+                    </select>
+                  </label>
+                )}
+                {((selected.config as Record<string, string>)?.assignMode ?? "round-robin") === "territory" && (
+                  <label className="block animate-fade-in">
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">Territory Mapping</span>
+                    <select className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none">
+                      <option>Southeast Region</option>
+                      <option>Northeast Region</option>
+                      <option>West Coast</option>
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
+            {selected.type === "action" && selected.label !== "Assign Rep" && (
+              <div className="mt-4 text-xs text-muted-foreground">
+                Configure "{selected.label}" when this node fires. (Mock configuration only.)
+              </div>
+            )}
+            {selected.type === "condition" && (
+              <div className="mt-4 space-y-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Field</span>
+                  <select
+                    value={(selected.config as Record<string, string>)?.field ?? "Lead Source"}
+                    onChange={(e) => updateSelectedConfig({ field: e.target.value })}
+                    className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                  >
+                    <option>Lead Source</option>
+                    <option>Interest Area</option>
+                    <option>Company Name</option>
+                    <option>Follow-Up Preference</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Operator</span>
+                  <select
+                    value={(selected.config as Record<string, string>)?.operator ?? "equals"}
+                    onChange={(e) => updateSelectedConfig({ operator: e.target.value })}
+                    className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                  >
+                    <option value="equals">equals</option>
+                    <option value="not_equals">not equals</option>
+                    <option value="contains">contains</option>
+                    <option value="is_empty">is empty</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Value</span>
+                  <input
+                    value={(selected.config as Record<string, string>)?.value ?? "Trade Show"}
+                    onChange={(e) => updateSelectedConfig({ value: e.target.value })}
+                    className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                    placeholder="Enter value…"
+                  />
+                </label>
+                <div className="mt-2 flex gap-2">
+                  <div className="flex-1 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5 text-center text-xs font-medium text-primary">TRUE →</div>
+                  <div className="flex-1 rounded-md border border-border bg-muted/30 px-2 py-1.5 text-center text-xs font-medium text-muted-foreground">FALSE →</div>
+                </div>
+              </div>
+            )}
+            <button onClick={() => setSelectedId(null)} className="mt-4 text-xs text-primary hover:underline">Close</button>
+          </aside>
+        )}
+      </div>
+    </AppShell>
+  );
+}
