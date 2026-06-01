@@ -11,6 +11,8 @@ export type ConditionOperator = "equals" | "not_equals" | "contains" | "is_blank
 export interface VisibilityRule { fieldId: string; operator: ConditionOperator; value: string }
 export interface VisibilityConditions { logic: "AND" | "OR"; rules: VisibilityRule[] }
 
+export type FieldWidth = "full" | "half" | "third";
+
 export interface FormField {
   id: string;
   displayName: string;
@@ -29,6 +31,21 @@ export interface FormField {
   budgetMin?: string;
   budgetMax?: string;
   conditions?: VisibilityConditions;
+  requiredWhen?: VisibilityConditions;
+  width?: FieldWidth;
+  allowOther?: boolean;
+  propertyId?: string;
+}
+
+export type RowKind = "fields" | "richText" | "divider" | "image" | "heading";
+
+export interface FormRow {
+  id: string;
+  kind: RowKind;
+  fields?: FormField[];
+  richText?: { html: string };
+  image?: { src: string; alt?: string; align?: "left" | "center" | "right" };
+  heading?: { text: string; level: 2 | 3 };
 }
 
 export interface FormSection {
@@ -36,7 +53,10 @@ export interface FormSection {
   name: string;
   quickAdd: boolean;
   show: boolean;
-  fields: FormField[];
+  rows: FormRow[];
+  description?: string;
+  // Legacy field kept for migration only; runtime code should use rows + getSectionFields
+  fields?: FormField[];
 }
 
 export type FormStatus = "draft" | "published" | "archived";
@@ -156,18 +176,64 @@ export interface CustomerRecord {
   salesRep: string;
 }
 
+export interface CrmPropertySeed {
+  id: string;
+  label: string;
+  objectType: "contact" | "company" | "deal" | "custom";
+  group: string;
+  defaultFieldType: FieldType;
+  commonlyUsed?: boolean;
+  options?: FieldOption[];
+}
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+export function getSectionFields(section: FormSection): FormField[] {
+  if (!section.rows) return section.fields ?? [];
+  const out: FormField[] = [];
+  for (const r of section.rows) {
+    if (r.kind === "fields" && r.fields) out.push(...r.fields);
+  }
+  return out;
+}
+
+function migrateSection(s: FormSection): FormSection {
+  if (s.rows && s.rows.length > 0) {
+    const { fields: _legacy, ...rest } = s;
+    void _legacy;
+    return { ...rest, rows: s.rows };
+  }
+  const fields = s.fields ?? [];
+  const rows: FormRow[] = fields.map((f) => ({
+    id: uid(),
+    kind: "fields",
+    fields: [{ ...f, width: f.width ?? "full" }],
+  }));
+  const { fields: _legacy, ...rest } = s;
+  void _legacy;
+  return { ...rest, rows };
+}
+
+function migrateForm(f: Form): Form {
+  return { ...f, sections: f.sections.map(migrateSection) };
+}
+
 function defaultBasicDetails(): FormSection {
+  const mk = (field: FormField): FormRow => ({ id: uid(), kind: "fields", fields: [{ ...field, width: "full" }] });
   return {
     id: uid(), name: "Company Info", quickAdd: true, show: true,
-    fields: [
-      { id: uid(), displayName: "Company name", type: "text", required: true, included: true, placeholder: "Acme Co." },
-      { id: uid(), displayName: "Display name", type: "text", required: false, included: true },
-      { id: uid(), displayName: "Email ID", type: "email", required: true, included: true, placeholder: "name@company.com" },
-      { id: uid(), displayName: "Phone", type: "phone", required: false, included: true },
+    rows: [
+      mk({ id: uid(), displayName: "Company name", type: "text", required: true, included: true, placeholder: "Acme Co." }),
+      mk({ id: uid(), displayName: "Display name", type: "text", required: false, included: true }),
+      mk({ id: uid(), displayName: "Email ID", type: "email", required: true, included: true, placeholder: "name@company.com" }),
+      mk({ id: uid(), displayName: "Phone", type: "phone", required: false, included: true }),
     ],
   };
+}
+
+// Legacy helper used by seed code below — keeps the old shape and lets migrateForm convert it.
+function legacySection(name: string, quickAdd: boolean, show: boolean, fields: FormField[]): FormSection {
+  return { id: uid(), name, quickAdd, show, rows: [], fields };
 }
 
 function leadCaptureForm(): Form {
@@ -179,27 +245,24 @@ function leadCaptureForm(): Form {
     multiStep: false,
     sections: [
       defaultBasicDetails(),
-      {
-        id: uid(), name: "Trade Show Details", quickAdd: false, show: true,
-        fields: [
-          { id: uid(), displayName: "Trade Show", type: "select", required: true, included: true,
-            options: [
-              { label: "Atlanta Market", value: "atl" },
-              { label: "Las Vegas Market", value: "lvm" },
-              { label: "High Point Market", value: "hpm" },
-            ]},
-          { id: uid(), displayName: "Product Interest", type: "multi_select", required: false, included: true,
-            options: [
-              { label: "Lighting", value: "lighting" },
-              { label: "Furniture", value: "furniture" },
-              { label: "Home Décor", value: "decor" },
-              { label: "Textiles", value: "textiles" },
-              { label: "Kitchen & Bath", value: "kb" },
-            ]},
-          { id: uid(), displayName: "Experience Rating", type: "rating", required: false, included: true, ratingScale: 5 },
-          { id: uid(), displayName: "Notes", type: "long_text", required: false, included: true, placeholder: "Anything else?" },
-        ],
-      },
+      legacySection("Trade Show Details", false, true, [
+        { id: uid(), displayName: "Trade Show", type: "select", required: true, included: true,
+          options: [
+            { label: "Atlanta Market", value: "atl" },
+            { label: "Las Vegas Market", value: "lvm" },
+            { label: "High Point Market", value: "hpm" },
+          ]},
+        { id: uid(), displayName: "Product Interest", type: "multi_select", required: false, included: true,
+          options: [
+            { label: "Lighting", value: "lighting" },
+            { label: "Furniture", value: "furniture" },
+            { label: "Home Décor", value: "decor" },
+            { label: "Textiles", value: "textiles" },
+            { label: "Kitchen & Bath", value: "kb" },
+          ]},
+        { id: uid(), displayName: "Experience Rating", type: "rating", required: false, included: true, ratingScale: 5 },
+        { id: uid(), displayName: "Notes", type: "long_text", required: false, included: true, placeholder: "Anything else?" },
+      ]),
     ],
     afterSubmit: { mode: "message", message: "Thanks! Your rep will follow up shortly.", redirectUrl: "", delay: 3 },
     crm: { action: "lead", fieldMap: {}, defaultLeadStatus: "New" },
@@ -208,7 +271,7 @@ function leadCaptureForm(): Form {
   };
 }
 
-const SEED_FORMS: Form[] = [
+const RAW_SEED_FORMS: Form[] = [
   leadCaptureForm(),
   {
     id: "f_contact", name: "Contact Us (Website)", slug: "contact-us",
@@ -218,12 +281,11 @@ const SEED_FORMS: Form[] = [
     multiStep: false,
     sections: [
       defaultBasicDetails(),
-      { id: uid(), name: "How can we help?", quickAdd: false, show: true,
-        fields: [
-          { id: uid(), displayName: "Subject", type: "text", required: true, included: true },
-          { id: uid(), displayName: "Message", type: "long_text", required: true, included: true, placeholder: "Tell us what you need..." },
-          { id: uid(), displayName: "I agree to be contacted", type: "consent", required: true, included: true, consentText: "I agree to the privacy policy and to be contacted.", privacyUrl: "https://example.com/privacy" },
-        ]},
+      legacySection("How can we help?", false, true, [
+        { id: uid(), displayName: "Subject", type: "text", required: true, included: true },
+        { id: uid(), displayName: "Message", type: "long_text", required: true, included: true, placeholder: "Tell us what you need..." },
+        { id: uid(), displayName: "I agree to be contacted", type: "consent", required: true, included: true, consentText: "I agree to the privacy policy and to be contacted.", privacyUrl: "https://example.com/privacy" },
+      ]),
     ],
     afterSubmit: { mode: "message", message: "Thanks! We'll be in touch within 1 business day.", redirectUrl: "", delay: 3 },
     crm: { action: "lead", fieldMap: {}, defaultLeadStatus: "New" },
@@ -238,23 +300,21 @@ const SEED_FORMS: Form[] = [
     multiStep: true,
     sections: [
       defaultBasicDetails(),
-      { id: uid(), name: "Product Requirements", quickAdd: false, show: true,
-        fields: [
-          { id: uid(), displayName: "Product category", type: "select", required: true, included: true,
-            options: [
-              { label: "Lighting", value: "lighting" },
-              { label: "Furniture", value: "furniture" },
-              { label: "Home Décor", value: "decor" },
-            ]},
-          { id: uid(), displayName: "Estimated quantity", type: "number", required: true, included: true },
-          { id: uid(), displayName: "Target budget", type: "currency", required: false, included: true },
-          { id: uid(), displayName: "Specs / attachment", type: "file", required: false, included: true },
-        ]},
-      { id: uid(), name: "Timeline", quickAdd: false, show: true,
-        fields: [
-          { id: uid(), displayName: "Needed by", type: "date", required: true, included: true },
-          { id: uid(), displayName: "Notes", type: "long_text", required: false, included: true },
-        ]},
+      legacySection("Product Requirements", false, true, [
+        { id: uid(), displayName: "Product category", type: "select", required: true, included: true,
+          options: [
+            { label: "Lighting", value: "lighting" },
+            { label: "Furniture", value: "furniture" },
+            { label: "Home Décor", value: "decor" },
+          ]},
+        { id: uid(), displayName: "Estimated quantity", type: "number", required: true, included: true },
+        { id: uid(), displayName: "Target budget", type: "currency", required: false, included: true },
+        { id: uid(), displayName: "Specs / attachment", type: "file", required: false, included: true },
+      ]),
+      legacySection("Timeline", false, true, [
+        { id: uid(), displayName: "Needed by", type: "date", required: true, included: true },
+        { id: uid(), displayName: "Notes", type: "long_text", required: false, included: true },
+      ]),
     ],
     afterSubmit: { mode: "message", message: "Quote request received. Our team will respond within 2 business days.", redirectUrl: "", delay: 3 },
     crm: { action: "lead_deal", fieldMap: {}, defaultLeadStatus: "Prospect" },
@@ -280,13 +340,12 @@ const SEED_FORMS: Form[] = [
     createdAt: "2025-11-01", updatedAt: "2026-03-15",
     multiStep: false,
     sections: [
-      { id: uid(), name: "Your Experience", quickAdd: true, show: true,
-        fields: [
-          { id: uid(), displayName: "Overall rating", type: "rating", required: true, included: true, ratingScale: 5 },
-          { id: uid(), displayName: "What went well?", type: "long_text", required: false, included: true },
-          { id: uid(), displayName: "What could be improved?", type: "long_text", required: false, included: true },
-          { id: uid(), displayName: "Your email", type: "email", required: false, included: true },
-        ]},
+      legacySection("Your Experience", true, true, [
+        { id: uid(), displayName: "Overall rating", type: "rating", required: true, included: true, ratingScale: 5 },
+        { id: uid(), displayName: "What went well?", type: "long_text", required: false, included: true },
+        { id: uid(), displayName: "What could be improved?", type: "long_text", required: false, included: true },
+        { id: uid(), displayName: "Your email", type: "email", required: false, included: true },
+      ]),
     ],
     afterSubmit: { mode: "message", message: "Thanks for your feedback!", redirectUrl: "", delay: 3 },
     crm: { action: "none", fieldMap: {}, defaultLeadStatus: "New" },
@@ -294,6 +353,8 @@ const SEED_FORMS: Form[] = [
     submissionCount: 89, viewCount: 642,
   },
 ];
+
+const SEED_FORMS: Form[] = RAW_SEED_FORMS.map(migrateForm);
 
 const SEED_CUSTOMERS: CustomerRecord[] = [
   { id: "C_01396", name: "Flash Furnishing", code: "C_01396", email: "abinv@gmail.com", pricelist: "WholeSale Price", salesRep: "Internal" },
@@ -345,6 +406,7 @@ interface StoreCtx {
   submissions: Submission[];
   customers: CustomerRecord[];
   workflows: Workflow[];
+  customProperties: CrmPropertySeed[];
   getForm: (id: string) => Form | undefined;
   createForm: () => Form;
   updateForm: (id: string, patch: Partial<Form>) => void;
@@ -355,10 +417,20 @@ interface StoreCtx {
   reorderSections: (formId: string, ids: string[]) => void;
   addSection: (formId: string) => void;
   removeSection: (formId: string, sectionId: string) => void;
+  // Legacy field actions (re-implemented on rows; each new field goes into its own full-width row)
   addField: (formId: string, sectionId: string, field: FormField) => void;
   updateField: (formId: string, sectionId: string, fieldId: string, patch: Partial<FormField>) => void;
   removeField: (formId: string, sectionId: string, fieldId: string) => void;
   moveField: (formId: string, fromSection: string, toSection: string, fieldId: string, toIndex: number) => void;
+  // New row-aware actions
+  addRow: (formId: string, sectionId: string, row: FormRow, index?: number) => void;
+  removeRow: (formId: string, sectionId: string, rowId: string) => void;
+  moveRow: (formId: string, fromSectionId: string, toSectionId: string, rowId: string, toIndex: number) => void;
+  updateRow: (formId: string, sectionId: string, rowId: string, patch: Partial<FormRow>) => void;
+  addFieldToRow: (formId: string, sectionId: string, rowId: string, field: FormField, slotIndex?: number) => void;
+  moveFieldBetweenRows: (formId: string, fromSectionId: string, fromRowId: string, toSectionId: string, toRowId: string, fieldId: string, toIndex: number) => void;
+  duplicateField: (formId: string, sectionId: string, rowId: string, fieldId: string) => void;
+  addCustomProperty: (prop: CrmPropertySeed) => void;
   addSubmission: (s: Submission) => void;
   updateSubmission: (id: string, patch: Partial<Submission>) => void;
   updateWorkflow: (id: string, patch: Partial<Workflow>) => void;
@@ -366,19 +438,40 @@ interface StoreCtx {
 
 const Ctx = createContext<StoreCtx | null>(null);
 
+function balanceWidths(row: FormRow): FormRow {
+  if (row.kind !== "fields" || !row.fields) return row;
+  const n = row.fields.length;
+  // Only auto-assign when field has no explicit width (or width left over from previous row size)
+  return {
+    ...row,
+    fields: row.fields.map((f) => {
+      if (f.width && f.width !== "full" && n === 1) return { ...f, width: "full" };
+      if (!f.width || (n === 2 && f.width === "third") || (n === 3 && f.width === "half") || (n === 1 && f.width !== "full")) {
+        const w: FieldWidth = n === 1 ? "full" : n === 2 ? "half" : "third";
+        return { ...f, width: w };
+      }
+      return f;
+    }),
+  };
+}
+
 export function FormsStoreProvider({ children }: { children: ReactNode }) {
   const [forms, setForms] = useState<Form[]>(SEED_FORMS);
   const [submissions, setSubmissions] = useState<Submission[]>(SEED_SUBMISSIONS);
   const [customers] = useState<CustomerRecord[]>(SEED_CUSTOMERS);
   const [workflows, setWorkflows] = useState<Workflow[]>(SEED_WORKFLOWS);
+  const [customProperties, setCustomProperties] = useState<CrmPropertySeed[]>([]);
 
   const today = new Date().toISOString().slice(0, 10);
 
+  const mapSection = (formId: string, sectionId: string, fn: (s: FormSection) => FormSection) =>
+    setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: f.sections.map((s) => s.id === sectionId ? fn(s) : s), updatedAt: today } : f));
+
   const value: StoreCtx = {
-    forms, submissions, customers, workflows,
+    forms, submissions, customers, workflows, customProperties,
     getForm: (id) => forms.find((f) => f.id === id),
     createForm: () => {
-      const f: Form = {
+      const base: Form = {
         id: "f_" + uid(), name: "Untitled Form", slug: "untitled-" + uid(),
         description: "", status: "draft", kind: "Custom",
         createdAt: today, updatedAt: today,
@@ -389,10 +482,11 @@ export function FormsStoreProvider({ children }: { children: ReactNode }) {
         automation: { sendEmail: false, emailTemplate: "Thank You", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Medium" },
         submissionCount: 0, viewCount: 0,
       };
+      const f = migrateForm(base);
       setForms((p) => [f, ...p]);
       return f;
     },
-    updateForm: (id, patch) => setForms((p) => p.map((f) => f.id === id ? { ...f, ...patch, updatedAt: today } : f)),
+    updateForm: (id, patch) => setForms((p) => p.map((f) => f.id === id ? migrateForm({ ...f, ...patch, updatedAt: today }) : f)),
     cloneForm: (id) => {
       const orig = forms.find((f) => f.id === id);
       if (!orig) return null;
@@ -403,43 +497,169 @@ export function FormsStoreProvider({ children }: { children: ReactNode }) {
     archiveForm: (id) => setForms((p) => p.map((f) => f.id === id ? { ...f, status: "archived" as FormStatus } : f)),
     deleteForm: (id) => setForms((p) => p.filter((f) => f.id !== id)),
     updateSection: (formId, sectionId, patch) =>
-      setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: f.sections.map((s) => s.id === sectionId ? { ...s, ...patch } : s) } : f)),
+      mapSection(formId, sectionId, (s) => ({ ...s, ...patch })),
     reorderSections: (formId, ids) =>
       setForms((p) => p.map((f) => {
         if (f.id !== formId) return f;
         const map = new Map(f.sections.map((s) => [s.id, s]));
-        return { ...f, sections: ids.map((i) => map.get(i)!).filter(Boolean) };
+        return { ...f, sections: ids.map((i) => map.get(i)!).filter(Boolean), updatedAt: today };
       })),
     addSection: (formId) =>
-      setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: [...f.sections, { id: uid(), name: "New Section", quickAdd: false, show: true, fields: [] }] } : f)),
+      setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: [...f.sections, { id: uid(), name: "New Section", quickAdd: false, show: true, rows: [] }], updatedAt: today } : f)),
     removeSection: (formId, sectionId) =>
-      setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: f.sections.filter((s) => s.id !== sectionId) } : f)),
+      setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: f.sections.filter((s) => s.id !== sectionId), updatedAt: today } : f)),
     addField: (formId, sectionId, field) =>
-      setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: f.sections.map((s) => s.id === sectionId ? { ...s, fields: [...s.fields, field] } : s) } : f)),
+      mapSection(formId, sectionId, (s) => ({ ...s, rows: [...s.rows, { id: uid(), kind: "fields", fields: [{ ...field, width: "full" }] }] })),
     updateField: (formId, sectionId, fieldId, patch) =>
-      setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: f.sections.map((s) => s.id === sectionId ? { ...s, fields: s.fields.map((fl) => fl.id === fieldId ? { ...fl, ...patch } : fl) } : s) } : f)),
+      mapSection(formId, sectionId, (s) => ({
+        ...s,
+        rows: s.rows.map((r) => r.kind === "fields" && r.fields ? { ...r, fields: r.fields.map((fl) => fl.id === fieldId ? { ...fl, ...patch } : fl) } : r),
+      })),
     removeField: (formId, sectionId, fieldId) =>
-      setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: f.sections.map((s) => s.id === sectionId ? { ...s, fields: s.fields.filter((fl) => fl.id !== fieldId) } : s) } : f)),
+      mapSection(formId, sectionId, (s) => ({
+        ...s,
+        rows: s.rows
+          .map((r) => r.kind === "fields" && r.fields ? { ...r, fields: r.fields.filter((fl) => fl.id !== fieldId) } : r)
+          .filter((r) => !(r.kind === "fields" && (!r.fields || r.fields.length === 0)))
+          .map((r) => r.kind === "fields" ? balanceWidths(r) : r),
+      })),
     moveField: (formId, fromSec, toSec, fieldId, toIndex) =>
       setForms((p) => p.map((f) => {
         if (f.id !== formId) return f;
         let moving: FormField | undefined;
+        // Pull from source section's rows (single-field rows in legacy path)
         const cleared = f.sections.map((s) => {
           if (s.id !== fromSec) return s;
-          const idx = s.fields.findIndex((fl) => fl.id === fieldId);
-          if (idx < 0) return s;
-          moving = s.fields[idx];
-          return { ...s, fields: s.fields.filter((_, i) => i !== idx) };
+          let found: FormField | undefined;
+          const newRows: FormRow[] = [];
+          for (const r of s.rows) {
+            if (r.kind === "fields" && r.fields) {
+              const idx = r.fields.findIndex((fl) => fl.id === fieldId);
+              if (idx >= 0) {
+                found = r.fields[idx];
+                const remaining = r.fields.filter((_, i) => i !== idx);
+                if (remaining.length > 0) newRows.push(balanceWidths({ ...r, fields: remaining }));
+                continue;
+              }
+            }
+            newRows.push(r);
+          }
+          if (found) moving = found;
+          return { ...s, rows: newRows };
         });
         if (!moving) return f;
         const final = cleared.map((s) => {
           if (s.id !== toSec) return s;
-          const nf = [...s.fields];
-          nf.splice(Math.max(0, Math.min(toIndex, nf.length)), 0, moving!);
-          return { ...s, fields: nf };
+          const newRow: FormRow = { id: uid(), kind: "fields", fields: [{ ...moving!, width: "full" }] };
+          const rows = [...s.rows];
+          const insertAt = Math.max(0, Math.min(toIndex, rows.length));
+          rows.splice(insertAt, 0, newRow);
+          return { ...s, rows };
         });
-        return { ...f, sections: final };
+        return { ...f, sections: final, updatedAt: today };
       })),
+    addRow: (formId, sectionId, row, index) =>
+      mapSection(formId, sectionId, (s) => {
+        const rows = [...s.rows];
+        const at = index === undefined ? rows.length : Math.max(0, Math.min(index, rows.length));
+        const r = row.kind === "fields" ? balanceWidths(row) : row;
+        rows.splice(at, 0, r);
+        return { ...s, rows };
+      }),
+    removeRow: (formId, sectionId, rowId) =>
+      mapSection(formId, sectionId, (s) => ({ ...s, rows: s.rows.filter((r) => r.id !== rowId) })),
+    moveRow: (formId, fromSectionId, toSectionId, rowId, toIndex) =>
+      setForms((p) => p.map((f) => {
+        if (f.id !== formId) return f;
+        let moving: FormRow | undefined;
+        const cleared = f.sections.map((s) => {
+          if (s.id !== fromSectionId) return s;
+          const idx = s.rows.findIndex((r) => r.id === rowId);
+          if (idx < 0) return s;
+          moving = s.rows[idx];
+          return { ...s, rows: s.rows.filter((_, i) => i !== idx) };
+        });
+        if (!moving) return f;
+        const final = cleared.map((s) => {
+          if (s.id !== toSectionId) return s;
+          const rows = [...s.rows];
+          rows.splice(Math.max(0, Math.min(toIndex, rows.length)), 0, moving!);
+          return { ...s, rows };
+        });
+        return { ...f, sections: final, updatedAt: today };
+      })),
+    updateRow: (formId, sectionId, rowId, patch) =>
+      mapSection(formId, sectionId, (s) => ({
+        ...s,
+        rows: s.rows.map((r) => r.id === rowId ? { ...r, ...patch } : r),
+      })),
+    addFieldToRow: (formId, sectionId, rowId, field, slotIndex) =>
+      mapSection(formId, sectionId, (s) => ({
+        ...s,
+        rows: s.rows.map((r) => {
+          if (r.id !== rowId || r.kind !== "fields") return r;
+          const existing = r.fields ?? [];
+          if (existing.length >= 3) return r;
+          const next = [...existing];
+          const at = slotIndex === undefined ? next.length : Math.max(0, Math.min(slotIndex, next.length));
+          next.splice(at, 0, field);
+          return balanceWidths({ ...r, fields: next });
+        }),
+      })),
+    moveFieldBetweenRows: (formId, fromSectionId, fromRowId, toSectionId, toRowId, fieldId, toIndex) =>
+      setForms((p) => p.map((f) => {
+        if (f.id !== formId) return f;
+        let moving: FormField | undefined;
+        const sections = f.sections.map((s) => {
+          if (s.id !== fromSectionId) return s;
+          return {
+            ...s,
+            rows: s.rows
+              .map((r) => {
+                if (r.id !== fromRowId || r.kind !== "fields" || !r.fields) return r;
+                const idx = r.fields.findIndex((fl) => fl.id === fieldId);
+                if (idx < 0) return r;
+                moving = r.fields[idx];
+                const remaining = r.fields.filter((_, i) => i !== idx);
+                return { ...r, fields: remaining };
+              })
+              .filter((r) => !(r.kind === "fields" && (!r.fields || r.fields.length === 0) && r.id === fromRowId))
+              .map((r) => r.kind === "fields" ? balanceWidths(r) : r),
+          };
+        });
+        if (!moving) return f;
+        const finalSections = sections.map((s) => {
+          if (s.id !== toSectionId) return s;
+          return {
+            ...s,
+            rows: s.rows.map((r) => {
+              if (r.id !== toRowId || r.kind !== "fields") return r;
+              const existing = r.fields ?? [];
+              if (existing.length >= 3) return r;
+              const next = [...existing];
+              const at = Math.max(0, Math.min(toIndex, next.length));
+              next.splice(at, 0, moving!);
+              return balanceWidths({ ...r, fields: next });
+            }),
+          };
+        });
+        return { ...f, sections: finalSections, updatedAt: today };
+      })),
+    duplicateField: (formId, sectionId, rowId, fieldId) =>
+      mapSection(formId, sectionId, (s) => {
+        const idx = s.rows.findIndex((r) => r.id === rowId);
+        if (idx < 0) return s;
+        const r = s.rows[idx];
+        if (r.kind !== "fields" || !r.fields) return s;
+        const f = r.fields.find((fl) => fl.id === fieldId);
+        if (!f) return s;
+        const copy: FormField = { ...f, id: uid(), displayName: f.displayName + " copy", propertyId: undefined };
+        const newRow: FormRow = { id: uid(), kind: "fields", fields: [{ ...copy, width: "full" }] };
+        const rows = [...s.rows];
+        rows.splice(idx + 1, 0, newRow);
+        return { ...s, rows };
+      }),
+    addCustomProperty: (prop) => setCustomProperties((p) => [...p, prop]),
     addSubmission: (s) => {
       setSubmissions((p) => [s, ...p]);
       setForms((p) => p.map((f) => f.id === s.formId ? { ...f, submissionCount: f.submissionCount + 1 } : f));
@@ -479,10 +699,12 @@ export const FIELD_TYPE_META: Record<FieldType, { label: string; icon: string }>
 };
 
 export const newField = (type: FieldType, displayName: string): FormField => ({
-  id: uid(), displayName, type, required: false, included: true,
+  id: uid(), displayName, type, required: false, included: true, width: "full",
   ...(type === "select" || type === "multi_select" || type === "radio"
     ? { options: [{ label: "Option 1", value: "opt1" }, { label: "Option 2", value: "opt2" }] }
     : {}),
   ...(type === "rating" ? { ratingScale: 5 as const } : {}),
   ...(type === "consent" ? { consentText: "I agree to the terms and privacy policy.", privacyUrl: "" } : {}),
 });
+
+export const newId = () => uid();

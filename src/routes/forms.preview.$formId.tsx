@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from "react";
 import { Star, Upload, ArrowLeft, Sparkles, ExternalLink, Check, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Btn, Badge, Modal, Toast } from "@/components/ui-kit";
-import { useStore, type FormField, type Form } from "@/lib/forms-store";
+import { useStore, getSectionFields, type FormField, type Form, type FormRow } from "@/lib/forms-store";
 
 export const Route = createFileRoute("/forms/preview/$formId")({
   head: ({ params }) => ({ meta: [{ title: `Preview · ${params.formId}` }] }),
@@ -24,7 +24,7 @@ function PreviewPage() {
   const [simulate, setSimulate] = useState(false);
 
   const demoData = useMemo<Record<string, string>>(() => {
-    const allFields = form.sections.flatMap((s) => s.fields);
+    const allFields = form.sections.flatMap((s) => getSectionFields(s));
     const result: Record<string, string> = {};
     for (const f of allFields) {
       if (!f.included) continue;
@@ -86,7 +86,7 @@ export function FormRenderer({ form, onSubmit, standalone = false, prepopulatedV
     setVals(prepopulatedValues ?? {});
   }, [prepopulatedValues]);
 
-  const allFields = useMemo(() => form.sections.flatMap((s) => s.fields), [form]);
+  const allFields = useMemo(() => form.sections.flatMap((s) => getSectionFields(s)), [form]);
 
   const isFieldVisible = (f: FormField): boolean => {
     if (!f.conditions || f.conditions.rules.length === 0) return true;
@@ -116,7 +116,7 @@ export function FormRenderer({ form, onSubmit, standalone = false, prepopulatedV
 
   const validateCurrent = () => {
     const err: Record<string, string> = {};
-    currentSections.forEach((s) => s.fields.forEach((f) => {
+    currentSections.forEach((s) => getSectionFields(s).forEach((f) => {
       if (f.included && f.required && isFieldVisible(f) && !vals[f.displayName]) err[f.displayName] = "Required";
     }));
     setErrors(err);
@@ -171,15 +171,17 @@ export function FormRenderer({ form, onSubmit, standalone = false, prepopulatedV
             {currentSections.map((s) => (
               <section key={s.id}>
                 <h2 className="mb-3 text-base font-semibold">{s.name}</h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {s.fields.filter((f) => f.included && f.type !== "hidden" && isFieldVisible(f)).map((f) => {
-                    const wide = f.type === "long_text" || f.type === "html" || f.type === "consent";
-                    return (
-                      <div key={f.id} className={wide ? "sm:col-span-2" : ""}>
-                        <FieldInput field={f} value={vals[f.displayName] ?? ""} onChange={(v) => set(f.displayName, v)} error={errors[f.displayName]} />
-                      </div>
-                    );
-                  })}
+                <div className="space-y-4">
+                  {s.rows.map((row) => (
+                    <RowRender
+                      key={row.id}
+                      row={row}
+                      vals={vals}
+                      errors={errors}
+                      onChange={(name, v) => set(name, v)}
+                      isFieldVisible={isFieldVisible}
+                    />
+                  ))}
                 </div>
               </section>
             ))}
@@ -344,6 +346,44 @@ function KaiDedupModal({ open, matches, onDiscard, onCreate }: {
         ))}
       </div>
     </Modal>
+  );
+}
+
+function RowRender({ row, vals, errors, onChange, isFieldVisible }: { row: FormRow; vals: Record<string, string>; errors: Record<string, string>; onChange: (name: string, v: string) => void; isFieldVisible: (f: FormField) => boolean }) {
+  if (row.kind === "richText") {
+    return <div className="prose prose-sm max-w-none text-sm" dangerouslySetInnerHTML={{ __html: row.richText?.html ?? "" }} />;
+  }
+  if (row.kind === "divider") return <hr className="border-border" />;
+  if (row.kind === "heading") {
+    return row.heading?.level === 3
+      ? <h3 className="text-base font-semibold">{row.heading?.text}</h3>
+      : <h2 className="text-lg font-semibold">{row.heading?.text ?? ""}</h2>;
+  }
+  if (row.kind === "image" && row.image) {
+    return (
+      <div className={`flex ${row.image.align === "left" ? "justify-start" : row.image.align === "right" ? "justify-end" : "justify-center"}`}>
+        <img src={row.image.src} alt={row.image.alt ?? ""} className="max-w-full rounded" />
+      </div>
+    );
+  }
+  if (row.kind !== "fields") return null;
+  const fields = (row.fields ?? []).filter((f) => f.included && f.type !== "hidden" && isFieldVisible(f));
+  if (fields.length === 0) return null;
+  if (fields.length === 1) {
+    const f = fields[0];
+    return <FieldInput field={f} value={vals[f.displayName] ?? ""} onChange={(v) => onChange(f.displayName, v)} error={errors[f.displayName]} />;
+  }
+  return (
+    <div className="flex flex-col gap-4 sm:flex-row sm:gap-4">
+      {fields.map((f) => {
+        const w = f.width === "third" ? "sm:basis-1/3" : f.width === "half" ? "sm:basis-1/2" : "sm:flex-1";
+        return (
+          <div key={f.id} className={`flex-1 ${w}`}>
+            <FieldInput field={f} value={vals[f.displayName] ?? ""} onChange={(v) => onChange(f.displayName, v)} error={errors[f.displayName]} />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
