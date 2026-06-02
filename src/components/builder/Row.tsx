@@ -1,4 +1,4 @@
-import { useDroppable } from "@dnd-kit/core";
+import { useDroppable, useDndContext } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Trash2 } from "lucide-react";
@@ -41,21 +41,62 @@ export function Row({ form, section, row, selected, setSelected }: { form: Form;
 
       <div className="pl-6 pr-6 py-2">
         {row.kind === "fields" && <FieldsRowBody form={form} section={section} row={row} selected={selected} setSelected={setSelected} />}
-        {row.kind === "richText" && (
-          <div className="prose prose-sm max-w-none text-sm" dangerouslySetInnerHTML={{ __html: row.richText?.html ?? "" }} />
-        )}
-        {row.kind === "divider" && <hr className="my-3 border-border" />}
-        {row.kind === "heading" && (
-          row.heading?.level === 3
-            ? <h3 className="text-base font-semibold">{row.heading?.text}</h3>
-            : <h2 className="text-lg font-semibold">{row.heading?.text ?? ""}</h2>
-        )}
+        {row.kind === "richText" && <RichTextBlock html={row.richText?.html ?? ""} />}
+        {row.kind === "divider" && <DividerBlock />}
+        {row.kind === "heading" && <HeadingBlock text={row.heading?.text ?? ""} level={row.heading?.level ?? 2} />}
         {row.kind === "image" && row.image && (
           <div className={`flex ${row.image.align === "left" ? "justify-start" : row.image.align === "right" ? "justify-end" : "justify-center"}`}>
             <img src={row.image.src} alt={row.image.alt ?? ""} className="max-w-full rounded" />
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function RichTextBlock({ html }: { html: string }) {
+  const isPlaceholder = !html.trim() || html.trim() === "<p>Start typing…</p>" || html.trim() === "<p></p>";
+  return (
+    <div className="group/block relative">
+      <span className="absolute -top-2 left-2 z-10 hidden rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary group-hover/block:inline-flex">
+        Rich Text
+      </span>
+      <div
+        className={`prose prose-sm max-w-none rounded-md border border-dashed px-3 py-2 text-sm transition-colors ${
+          isPlaceholder ? "border-border text-muted-foreground italic" : "border-transparent group-hover/block:border-border"
+        }`}
+        dangerouslySetInnerHTML={{ __html: isPlaceholder ? "Click to add text…" : html }}
+      />
+    </div>
+  );
+}
+
+function HeadingBlock({ text, level }: { text: string; level: 2 | 3 }) {
+  const isPlaceholder = !text.trim();
+  const display = isPlaceholder ? "Click to add heading…" : text;
+  return (
+    <div className="group/block relative">
+      <span className="absolute -top-2 left-2 z-10 hidden rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary group-hover/block:inline-flex">
+        H{level}
+      </span>
+      <div className={`rounded-md border border-dashed px-3 py-2 transition-colors ${isPlaceholder ? "border-border" : "border-transparent group-hover/block:border-border"}`}>
+        {level === 3 ? (
+          <h3 className={`text-base font-semibold ${isPlaceholder ? "text-muted-foreground italic" : ""}`}>{display}</h3>
+        ) : (
+          <h2 className={`text-lg font-semibold ${isPlaceholder ? "text-muted-foreground italic" : ""}`}>{display}</h2>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DividerBlock() {
+  return (
+    <div className="group/block relative py-2">
+      <span className="absolute -top-2 left-2 z-10 hidden rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary group-hover/block:inline-flex">
+        Divider
+      </span>
+      <hr className="border-t-2 border-border" />
     </div>
   );
 }
@@ -82,11 +123,17 @@ function FieldsRowBody({ form, section, row, selected, setSelected }: { form: Fo
 function RowSlot({ sectionId, rowId, index }: { sectionId: string; rowId: string; index: number }) {
   const data: DropData = { kind: "row-slot", sectionId, rowId, slotIndex: index };
   const { setNodeRef, isOver } = useDroppable({ id: `slot-${rowId}-${index}`, data });
+  const { active } = useDndContext();
+  const a = active?.data?.current as { source?: string } | undefined;
+  const dragging = !!a && (a.source === "libraryProperty" || a.source === "libraryField" || a.source === "field");
+  // While idle: narrow 4px column, no extra hit area (so it doesn't block clicks on
+  // adjacent field cards). While a field is being dragged: visible 8px column with a
+  // hint indicator so users can clearly target side-by-side placement.
+  if (!dragging) return <div className="w-1 shrink-0 self-stretch" />;
   return (
-    <div
-      ref={setNodeRef}
-      className={`w-1 self-stretch rounded transition-all ${isOver ? "w-2 bg-primary" : "bg-transparent"}`}
-    />
+    <div ref={setNodeRef} className="w-2 shrink-0 self-stretch py-2">
+      <div className={`h-full w-full rounded border border-dashed transition-colors ${isOver ? "border-primary bg-primary" : "border-primary/40 bg-primary/10"}`} />
+    </div>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DndContext, PointerSensor, useSensor, useSensors, closestCorners, DragOverlay, type DragStartEvent, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, PointerSensor, useSensor, useSensors, pointerWithin, rectIntersection, closestCenter, DragOverlay, type DragStartEvent, type DragEndEvent, type CollisionDetection } from "@dnd-kit/core";
 import { Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useStore, DEFAULT_FORM_STYLE, type FormStyle } from "@/lib/forms-store";
@@ -10,6 +10,23 @@ import { Canvas } from "./Canvas";
 import { RightPanel } from "./RightPanel";
 import { handleDragEnd } from "./dnd-helpers";
 import type { Selection, DragData } from "./types";
+
+// Custom collision: cursor-inside wins over closest-corner. Within the set of
+// droppables the cursor is inside, prefer the most specific "narrow" zones
+// (between-sections / between-rows / row-slot) so users can reliably target the
+// thin indicator strips even when a larger section card overlaps.
+const PRIORITY_ID_PREFIXES = ["between-", "top-", "after-", "btw-", "slot-"];
+const canvasCollisionDetection: CollisionDetection = (args) => {
+  const pointer = pointerWithin(args);
+  if (pointer.length > 0) {
+    const priority = pointer.filter((c) => PRIORITY_ID_PREFIXES.some((p) => String(c.id).startsWith(p)));
+    if (priority.length > 0) return priority;
+    return pointer;
+  }
+  const rects = rectIntersection(args);
+  if (rects.length > 0) return rects;
+  return closestCenter(args);
+};
 
 export function BuilderShell({ formId }: { formId: string }) {
   const store = useStore();
@@ -41,13 +58,14 @@ export function BuilderShell({ formId }: { formId: string }) {
     handleDragEnd(e, form, {
       addRow: store.addRow, removeRow: store.removeRow, moveRow: store.moveRow,
       addFieldToRow: store.addFieldToRow, moveFieldBetweenRows: store.moveFieldBetweenRows,
+      moveFieldToNewRow: store.moveFieldToNewRow,
       reorderSections: store.reorderSections,
     }, store.customProperties);
   };
 
   return (
     <AppShell breadcrumb={[{ label: "Dashboard", to: "/forms" }, { label: "Forms", to: "/forms" }, { label: form.name }]}>
-      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onStart} onDragEnd={onEnd} onDragCancel={() => setActiveDrag(null)}>
+      <DndContext sensors={sensors} collisionDetection={canvasCollisionDetection} onDragStart={onStart} onDragEnd={onEnd} onDragCancel={() => setActiveDrag(null)}>
         <div className="flex h-full flex-col">
           <TopBar form={form} />
           <div className="flex min-h-0 flex-1">

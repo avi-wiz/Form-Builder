@@ -117,7 +117,27 @@ export function FormRenderer({ form, onSubmit, standalone = false, prepopulatedV
   const validateCurrent = () => {
     const err: Record<string, string> = {};
     currentSections.forEach((s) => getSectionFields(s).forEach((f) => {
-      if (f.included && f.required && isFieldVisible(f) && !vals[f.displayName]) err[f.displayName] = "Required";
+      if (!f.included || !isFieldVisible(f)) return;
+      const val = vals[f.displayName] ?? "";
+      if (f.required && !val) {
+        err[f.displayName] = f.validationMessage ?? "Required";
+        return;
+      }
+      if (val) {
+        if (f.minLength != null && val.length < f.minLength) {
+          err[f.displayName] = f.validationMessage ?? `Minimum ${f.minLength} characters required`;
+        } else if (f.maxLength != null && val.length > f.maxLength) {
+          err[f.displayName] = f.validationMessage ?? `Maximum ${f.maxLength} characters allowed`;
+        } else if (f.validationPattern) {
+          try {
+            if (!new RegExp(f.validationPattern).test(val)) {
+              err[f.displayName] = f.validationMessage ?? "Invalid format";
+            }
+          } catch {
+            // invalid regex — skip
+          }
+        }
+      }
     }));
     setErrors(err);
     return Object.keys(err).length === 0;

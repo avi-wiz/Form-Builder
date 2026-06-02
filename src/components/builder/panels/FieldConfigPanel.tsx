@@ -1,8 +1,11 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, X, Plus, EyeOff } from "lucide-react";
+import { ChevronDown, ChevronRight, X, EyeOff, GripVertical } from "lucide-react";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Toggle } from "@/components/ui-kit";
 import { WidthSegment } from "../FieldCard";
-import { FIELD_TYPE_META, useStore, type FieldType, type FieldWidth, type Form, type FormField, type ConditionOperator, type VisibilityConditions } from "@/lib/forms-store";
+import { FIELD_TYPE_META, useStore, type FieldType, type FieldWidth, type Form, type FormField, type FieldOption, type ConditionOperator, type VisibilityConditions } from "@/lib/forms-store";
 
 const OPERATORS: { value: ConditionOperator; label: string }[] = [
   { value: "equals", label: "equals" },
@@ -43,6 +46,7 @@ export function FieldConfigPanel({ form, sectionId, field, allFields, onDelete }
           <textarea value={field.helpText ?? ""} onChange={(e) => update({ helpText: e.target.value })} rows={2} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm" />
         </Labeled>
         <ToggleRow label="Required" checked={field.required} onChange={(v) => update({ required: v })} />
+        <ToggleRow label="Hidden" checked={field.type === "hidden"} onChange={(v) => update({ type: v ? "hidden" : "text" })} />
         <ToggleRow label="Include in form" checked={field.included} onChange={(v) => update({ included: v })} />
         <ToggleRow label="Include in Quick Add" checked={field.included} onChange={(v) => update({ included: v })} />
       </Collapsible>
@@ -52,6 +56,49 @@ export function FieldConfigPanel({ form, sectionId, field, allFields, onDelete }
           <WidthSegment current={field.width ?? "full"} onChange={(w: FieldWidth) => update({ width: w })} />
         </Labeled>
       </Collapsible>
+
+      {(field.type === "text" || field.type === "long_text" || field.type === "email" || field.type === "url" || field.type === "phone") && (
+        <Collapsible title="Validation">
+          <div className="flex gap-2">
+            <Labeled label="Min length" className="flex-1">
+              <input
+                type="number" min={0}
+                value={field.minLength ?? ""}
+                onChange={(e) => update({ minLength: e.target.value ? Number(e.target.value) : undefined })}
+                placeholder="—"
+                className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
+              />
+            </Labeled>
+            <Labeled label="Max length" className="flex-1">
+              <input
+                type="number" min={0}
+                value={field.maxLength ?? ""}
+                onChange={(e) => update({ maxLength: e.target.value ? Number(e.target.value) : undefined })}
+                placeholder="—"
+                className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
+              />
+            </Labeled>
+          </div>
+          {field.type === "text" || field.type === "long_text" ? (
+            <Labeled label="Pattern (regex)">
+              <input
+                value={field.validationPattern ?? ""}
+                onChange={(e) => update({ validationPattern: e.target.value || undefined })}
+                placeholder="e.g. ^[A-Z].*"
+                className="w-full rounded-md border border-border px-2.5 py-1.5 font-mono text-sm"
+              />
+            </Labeled>
+          ) : null}
+          <Labeled label="Custom error message">
+            <input
+              value={field.validationMessage ?? ""}
+              onChange={(e) => update({ validationMessage: e.target.value || undefined })}
+              placeholder="This field is invalid"
+              className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
+            />
+          </Labeled>
+        </Collapsible>
+      )}
 
       {field.type === "hidden" && (
         <Collapsible title="Hidden Field Config" defaultOpen>
@@ -96,16 +143,7 @@ export function FieldConfigPanel({ form, sectionId, field, allFields, onDelete }
 
       {(field.type === "select" || field.type === "multi_select" || field.type === "radio") && (
         <Collapsible title="Options" defaultOpen>
-          <div className="space-y-1.5">
-            {(field.options ?? []).map((opt, i) => (
-              <div key={i} className="flex items-center gap-1">
-                <input value={opt.label} onChange={(e) => { const o = [...(field.options ?? [])]; o[i] = { ...o[i], label: e.target.value }; update({ options: o }); }} className="flex-1 rounded border border-border px-2 py-1 text-xs" placeholder="Label" />
-                <input value={opt.value} onChange={(e) => { const o = [...(field.options ?? [])]; o[i] = { ...o[i], value: e.target.value }; update({ options: o }); }} className="w-20 rounded border border-border px-2 py-1 text-xs" placeholder="Value" />
-                <button onClick={() => update({ options: (field.options ?? []).filter((_, j) => j !== i) })} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"><X className="h-3 w-3" /></button>
-              </div>
-            ))}
-            <button onClick={() => update({ options: [...(field.options ?? []), { label: "New option", value: "opt" + ((field.options?.length ?? 0) + 1) }] })} className="text-[11px] text-primary hover:underline">+ Add option</button>
-          </div>
+          <OptionsList options={field.options ?? []} onChange={(opts) => update({ options: opts })} />
           <ToggleRow label="Allow Other with text field" checked={!!field.allowOther} onChange={(v) => update({ allowOther: v })} />
         </Collapsible>
       )}
@@ -118,6 +156,63 @@ export function FieldConfigPanel({ form, sectionId, field, allFields, onDelete }
         className="mt-3 w-full rounded-md border border-destructive/40 px-3 py-2 text-xs font-medium text-destructive hover:bg-destructive/5"
       >
         Delete field
+      </button>
+    </div>
+  );
+}
+
+function OptionsList({ options, onChange }: { options: FieldOption[]; onChange: (opts: FieldOption[]) => void }) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const ids = options.map((_, i) => String(i));
+
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = Number(active.id);
+    const to = Number(over.id);
+    onChange(arrayMove(options, from, to));
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+          {options.map((opt, i) => (
+            <SortableOption
+              key={i}
+              id={String(i)}
+              opt={opt}
+              onChange={(patch) => { const o = [...options]; o[i] = { ...o[i], ...patch }; onChange(o); }}
+              onDelete={() => onChange(options.filter((_, j) => j !== i))}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+      <button
+        onClick={() => onChange([...options, { label: "New option", value: "opt" + (options.length + 1) }])}
+        className="text-[11px] text-primary hover:underline"
+      >
+        + Add option
+      </button>
+    </div>
+  );
+}
+
+function SortableOption({ id, opt, onChange, onDelete }: { id: string; opt: FieldOption; onChange: (p: Partial<FieldOption>) => void; onDelete: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      className="flex items-center gap-1"
+    >
+      <span {...attributes} {...listeners} className="cursor-grab text-muted-foreground active:cursor-grabbing">
+        <GripVertical className="h-3.5 w-3.5" />
+      </span>
+      <input value={opt.label} onChange={(e) => onChange({ label: e.target.value })} className="flex-1 rounded border border-border px-2 py-1 text-xs" placeholder="Label" />
+      <input value={opt.value} onChange={(e) => onChange({ value: e.target.value })} className="w-20 rounded border border-border px-2 py-1 text-xs" placeholder="Value" />
+      <button onClick={onDelete} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive">
+        <X className="h-3 w-3" />
       </button>
     </div>
   );

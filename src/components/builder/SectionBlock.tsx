@@ -106,10 +106,11 @@ function EmptySectionDrop({ sectionId }: { sectionId: string }) {
 function BetweenRowsDrop({ sectionId, index }: { sectionId: string; index: number }) {
   const data: DropData = { kind: "between-rows", sectionId, index };
   const { setNodeRef, isOver } = useDroppable({ id: `btw-${sectionId}-${index}`, data });
+  // Hit area is ~12px (negative margin pulls it into surrounding gap); visible
+  // indicator is a 2px line that only shows when hovered.
   return (
-    <div
-      ref={setNodeRef}
-      className={`h-2 rounded transition-colors ${isOver ? "bg-primary h-3" : ""}`}
-    />
+    <div ref={setNodeRef} className="-my-2 flex h-4 items-center">
+      <div className={`h-0.5 w-full rounded transition-colors ${isOver ? "h-1 bg-primary" : "bg-transparent"}`} />
+    </div>
   );
 }

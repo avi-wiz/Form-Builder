@@ -35,6 +35,10 @@ export interface FormField {
   width?: FieldWidth;
   allowOther?: boolean;
   propertyId?: string;
+  minLength?: number;
+  maxLength?: number;
+  validationPattern?: string;
+  validationMessage?: string;
 }
 
 export type RowKind = "fields" | "richText" | "divider" | "image" | "heading";
@@ -223,10 +227,10 @@ function defaultBasicDetails(): FormSection {
   return {
     id: uid(), name: "Company Info", quickAdd: true, show: true,
     rows: [
-      mk({ id: uid(), displayName: "Company name", type: "text", required: true, included: true, placeholder: "Acme Co." }),
-      mk({ id: uid(), displayName: "Display name", type: "text", required: false, included: true }),
-      mk({ id: uid(), displayName: "Email ID", type: "email", required: true, included: true, placeholder: "name@company.com" }),
-      mk({ id: uid(), displayName: "Phone", type: "phone", required: false, included: true }),
+      mk({ id: uid(), displayName: "Company name", type: "text", required: true, included: true, placeholder: "Acme Co.", propertyId: "company.name" }),
+      mk({ id: uid(), displayName: "Display name", type: "text", required: false, included: true, propertyId: "company.display_name" }),
+      mk({ id: uid(), displayName: "Email ID", type: "email", required: true, included: true, placeholder: "name@company.com", propertyId: "contact.email" }),
+      mk({ id: uid(), displayName: "Phone", type: "phone", required: false, included: true, propertyId: "contact.phone" }),
     ],
   };
 }
@@ -429,6 +433,7 @@ interface StoreCtx {
   updateRow: (formId: string, sectionId: string, rowId: string, patch: Partial<FormRow>) => void;
   addFieldToRow: (formId: string, sectionId: string, rowId: string, field: FormField, slotIndex?: number) => void;
   moveFieldBetweenRows: (formId: string, fromSectionId: string, fromRowId: string, toSectionId: string, toRowId: string, fieldId: string, toIndex: number) => void;
+  moveFieldToNewRow: (formId: string, fromSectionId: string, fromRowId: string, toSectionId: string, toRowIndex: number, fieldId: string) => void;
   duplicateField: (formId: string, sectionId: string, rowId: string, fieldId: string) => void;
   addCustomProperty: (prop: CrmPropertySeed) => void;
   addSubmission: (s: Submission) => void;
@@ -476,7 +481,7 @@ export function FormsStoreProvider({ children }: { children: ReactNode }) {
         description: "", status: "draft", kind: "Custom",
         createdAt: today, updatedAt: today,
         multiStep: false,
-        sections: [defaultBasicDetails()],
+        sections: [],
         afterSubmit: { mode: "message", message: "Thank you! Your submission has been received.", redirectUrl: "", delay: 3 },
         crm: { action: "none", fieldMap: {}, defaultLeadStatus: "New" },
         automation: { sendEmail: false, emailTemplate: "Thank You", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Medium" },
@@ -513,7 +518,12 @@ export function FormsStoreProvider({ children }: { children: ReactNode }) {
     updateField: (formId, sectionId, fieldId, patch) =>
       mapSection(formId, sectionId, (s) => ({
         ...s,
-        rows: s.rows.map((r) => r.kind === "fields" && r.fields ? { ...r, fields: r.fields.map((fl) => fl.id === fieldId ? { ...fl, ...patch } : fl) } : r),
+        rows: s.rows.map((r) => {
+          if (r.kind !== "fields" || !r.fields) return r;
+          const updated = { ...r, fields: r.fields.map((fl) => fl.id === fieldId ? { ...fl, ...patch } : fl) };
+          // Re-balance only when a width change was included in the patch.
+          return "width" in patch ? balanceWidths(updated) : updated;
+        }),
       })),
     removeField: (formId, sectionId, fieldId) =>
       mapSection(formId, sectionId, (s) => ({
@@ -642,6 +652,39 @@ export function FormsStoreProvider({ children }: { children: ReactNode }) {
               return balanceWidths({ ...r, fields: next });
             }),
           };
+        });
+        return { ...f, sections: finalSections, updatedAt: today };
+      })),
+    moveFieldToNewRow: (formId, fromSectionId, fromRowId, toSectionId, toRowIndex, fieldId) =>
+      setForms((p) => p.map((f) => {
+        if (f.id !== formId) return f;
+        let moving: FormField | undefined;
+        // Pull the field from its source row (within source section) and prune the
+        // source row if it becomes empty.
+        const afterRemoval = f.sections.map((s) => {
+          if (s.id !== fromSectionId) return s;
+          return {
+            ...s,
+            rows: s.rows
+              .map((r) => {
+                if (r.id !== fromRowId || r.kind !== "fields" || !r.fields) return r;
+                const idx = r.fields.findIndex((fl) => fl.id === fieldId);
+                if (idx < 0) return r;
+                moving = r.fields[idx];
+                return { ...r, fields: r.fields.filter((_, i) => i !== idx) };
+              })
+              .filter((r) => !(r.kind === "fields" && (!r.fields || r.fields.length === 0)))
+              .map((r) => r.kind === "fields" ? balanceWidths(r) : r),
+          };
+        });
+        if (!moving) return f;
+        const newRow: FormRow = { id: uid(), kind: "fields", fields: [{ ...moving, width: "full" }] };
+        const finalSections = afterRemoval.map((s) => {
+          if (s.id !== toSectionId) return s;
+          const nextRows = [...s.rows];
+          const at = Math.max(0, Math.min(toRowIndex, nextRows.length));
+          nextRows.splice(at, 0, newRow);
+          return { ...s, rows: nextRows };
         });
         return { ...f, sections: finalSections, updatedAt: today };
       })),
