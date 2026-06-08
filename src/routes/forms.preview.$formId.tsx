@@ -5,6 +5,7 @@ import { Star, Upload, ArrowLeft, Sparkles, ExternalLink, Check, Loader2 } from 
 import { AppShell } from "@/components/layout/AppShell";
 import { Btn, Badge, Modal, Toast } from "@/components/ui-kit";
 import { useStore, getSectionFields, type FormField, type Form, type FormRow } from "@/lib/forms-store";
+import { getLookupPlaceholders } from "@/lib/crm-catalog";
 
 export const Route = createFileRoute("/forms/preview/$formId")({
   head: ({ params }) => ({ meta: [{ title: `Preview · ${params.formId}` }] }),
@@ -420,6 +421,11 @@ function FieldInput({ field, value, onChange, error }: { field: FormField; value
       input = <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} rows={3} className={cls} />; break;
     case "select":
       input = <select value={value} onChange={(e) => onChange(e.target.value)} className={cls}><option value="">Select...</option>{field.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>; break;
+    case "lookup": {
+      const items = field.lookupEntity ? getLookupPlaceholders(field.lookupEntity) : [];
+      input = <select value={value} onChange={(e) => onChange(e.target.value)} className={cls}><option value="">Search…</option>{items.map((it) => <option key={it} value={it}>{it}</option>)}</select>;
+      break;
+    }
     case "multi_select":
       input = <select multiple value={value ? value.split(",") : []} onChange={(e) => onChange(Array.from(e.target.selectedOptions).map((o) => o.value).join(","))} className={cls}>{field.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>; break;
     case "radio":

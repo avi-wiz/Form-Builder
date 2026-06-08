@@ -1084,6 +1084,26 @@ export function getDefaultMatchKeys(action: CrmAction): string[] {
   return MATCH_KEYS[entity] ?? [];
 }
 
+// Placeholder options for lookup fields in preview/canvas (no real backend).
+const LOOKUP_PLACEHOLDERS: Partial<Record<EntityType, string[]>> = {
+  retailer_account: ["Acme Lighting Co.", "Pacific Coast Imports", "Bright Decor LLC"],
+  buyer_contact: ["Sarah Mills", "Marcus Lin", "Linda Park"],
+  sales_rep: ["Sample Rep 1", "Sample Rep 2", "Sample Rep 3"],
+  rep_group: ["Southeast Home Group", "West Coast Reps", "Midwest Partners"],
+  price_list: ["Wholesale", "Preferred", "VIP"],
+  payment_method: ["ACH •••• 4821", "Visa •••• 1004", "Check"],
+  store_location: ["Main St. Flagship", "Downtown Annex", "Outlet #3"],
+  sku: ["SKU-001 — Modern Pendant", "SKU-002 — Oak Dining Table", "SKU-003 — Linen Throw"],
+  quote: ["Q-1042", "Q-1043", "Q-1051"],
+  order: ["SO-5001", "SO-5002", "SO-5010"],
+  standing_order: ["Weekly Linens", "Monthly Lighting", "Seasonal Decor"],
+  trade_show: ["Atlanta Market", "Las Vegas Market", "High Point Market"],
+};
+
+export function getLookupPlaceholders(entity: EntityType): string[] {
+  return LOOKUP_PLACEHOLDERS[entity] ?? ["Sample 1", "Sample 2", "Sample 3"];
+}
+
 export function entityBadgeClasses(entity: EntityType): string {
   switch (entity) {
     case "retailer_account": return "bg-green-100 text-green-700";

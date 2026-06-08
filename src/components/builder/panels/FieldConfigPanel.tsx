@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, X, EyeOff, GripVertical, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, X, EyeOff, GripVertical, Plus, Info } from "lucide-react";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Toggle } from "@/components/ui-kit";
 import { WidthSegment } from "../FieldCard";
 import { FIELD_TYPE_META, useStore, type FieldType, type FieldWidth, type Form, type FormField, type FieldOption, type ConditionOperator, type VisibilityConditions } from "@/lib/forms-store";
+import { CRM_PROPERTIES, PROPERTY_GROUPS, getEntityLabel, type EntityType } from "@/lib/crm-catalog";
 
 const OPERATORS: { value: ConditionOperator; label: string }[] = [
   { value: "equals", label: "equals" },
@@ -20,16 +21,24 @@ export function FieldConfigPanel({ form, sectionId, field, allFields, onDelete }
   const store = useStore();
   const update = (patch: Partial<FormField>) => store.updateField(form.id, sectionId, field.id, patch);
 
+  // The catalog property this field is linked to (if any) — drives the badge
+  // label and the ℹ️ help tooltips for wholesale-specific concepts.
+  const linkedProp = field.propertyId ? CRM_PROPERTIES.find((p) => p.id === field.propertyId) : undefined;
+
   return (
     <div className="space-y-3">
       {field.propertyId && (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] text-blue-800">
-          Linked to property: <span className="font-mono">{field.propertyId}</span>
+          {linkedProp ? (
+            <>Linked to <span className="font-semibold">{getEntityLabel(linkedProp.entity)} → {linkedProp.label}</span></>
+          ) : (
+            <>Linked to property: <span className="font-mono">{field.propertyId}</span></>
+          )}
         </div>
       )}
 
       <Collapsible title="Field Settings" defaultOpen>
-        <Labeled label="Display Name">
+        <Labeled label="Display Name" info={linkedProp?.helpText}>
           <input value={field.displayName} onChange={(e) => update({ displayName: e.target.value })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm focus:border-primary focus:outline-none" />
         </Labeled>
         <Labeled label="Type">
@@ -37,6 +46,18 @@ export function FieldConfigPanel({ form, sectionId, field, allFields, onDelete }
             {(Object.keys(FIELD_TYPE_META) as FieldType[]).map((t) => <option key={t} value={t}>{FIELD_TYPE_META[t].label}</option>)}
           </select>
         </Labeled>
+        {field.type === "lookup" && (
+          <Labeled label="Lookup Entity">
+            <select
+              value={field.lookupEntity ?? ""}
+              onChange={(e) => update({ lookupEntity: (e.target.value || undefined) as EntityType | undefined })}
+              className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
+            >
+              <option value="">— Select entity —</option>
+              {PROPERTY_GROUPS.map((g) => <option key={g.entity} value={g.entity}>{g.label}</option>)}
+            </select>
+          </Labeled>
+        )}
         {field.type !== "hidden" && (
           <Labeled label="Placeholder">
             <input value={field.placeholder ?? ""} onChange={(e) => update({ placeholder: e.target.value })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm" />
@@ -231,10 +252,13 @@ function Collapsible({ title, children, defaultOpen }: { title: string; children
   );
 }
 
-function Labeled({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+function Labeled({ label, children, className = "", info }: { label: string; children: React.ReactNode; className?: string; info?: string }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-0.5 block text-[11px] font-medium text-muted-foreground">{label}</span>
+      <span className="mb-0.5 flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+        {label}
+        {info && <span title={info} className="inline-flex cursor-help"><Info className="h-3 w-3 text-muted-foreground/70" /></span>}
+      </span>
       {children}
     </label>
   );

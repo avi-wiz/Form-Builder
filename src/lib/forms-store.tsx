@@ -38,6 +38,7 @@ export interface FormField {
   width?: FieldWidth;
   allowOther?: boolean;
   propertyId?: string;
+  lookupEntity?: EntityType;
   minLength?: number;
   maxLength?: number;
   validationPattern?: string;

@@ -1,7 +1,8 @@
 import { useDraggable } from "@dnd-kit/core";
-import { EyeOff, Copy, Trash2 } from "lucide-react";
+import { EyeOff, Copy, Trash2, Search } from "lucide-react";
 import { Badge } from "@/components/ui-kit";
 import { FIELD_TYPE_META, useStore, type Form, type FormField, type FormRow, type FormSection, type FieldWidth } from "@/lib/forms-store";
+import { getEntityLabel } from "@/lib/crm-catalog";
 import type { Selection, DragData } from "./types";
 
 export function FieldCard({ form, section, row, field, selected, setSelected }: { form: Form; section: FormSection; row: FormRow; field: FormField; selected: Selection; setSelected: (s: Selection) => void }) {
@@ -34,6 +35,11 @@ export function FieldCard({ form, section, row, field, selected, setSelected }: 
         )}
         {field.requiredWhen && field.requiredWhen.rules.length > 0 && (
           <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-purple-700">Req Logic</span>
+        )}
+        {field.type === "lookup" && (
+          <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-semibold text-sky-700">
+            🔗 Lookup → {field.lookupEntity ? getEntityLabel(field.lookupEntity) : "—"}
+          </span>
         )}
       </div>
       <div className="mt-1.5">
@@ -98,6 +104,8 @@ function FauxInput({ field }: { field: FormField }) {
     case "select":
     case "multi_select":
       return <div className="h-7 rounded border border-border bg-muted/30 text-xs text-muted-foreground px-2 py-1">▾ Select...</div>;
+    case "lookup":
+      return <div className="flex h-7 items-center gap-1 rounded border border-border bg-muted/30 px-2 py-1 text-xs text-muted-foreground"><Search className="h-3 w-3" /> Search {field.lookupEntity ? "…" : "to look up"}…</div>;
     case "radio":
       return (
         <div className="space-y-0.5">
