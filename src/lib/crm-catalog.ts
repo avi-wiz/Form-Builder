@@ -1052,6 +1052,9 @@ const ACTION_TO_ENTITY: Record<Exclude<CrmAction, "none">, EntityType> = {
   log_activity: "activity",
 };
 
+// All selectable CRM actions, in display order (the 13 createable/log actions).
+export const CRM_ACTIONS = Object.keys(ACTION_TO_ENTITY) as Exclude<CrmAction, "none">[];
+
 export function entityForAction(action: CrmAction): EntityType | null {
   if (action === "none") return null;
   return ACTION_TO_ENTITY[action];

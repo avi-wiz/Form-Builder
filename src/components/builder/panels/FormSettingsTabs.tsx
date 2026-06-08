@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Sparkles, Settings, Palette, Shield, ChevronDown } from "lucide-react";
+import { Sparkles, Settings, Palette, Shield, Star } from "lucide-react";
 import { Toggle } from "@/components/ui-kit";
 import { useStore, getSectionFields, DEFAULT_FORM_STYLE, DEFAULT_GOVERNANCE, type Form, type FormStyle, type FormGovernance, type RoleName, type RolePermissions } from "@/lib/forms-store";
+import {
+  CRM_ACTIONS, CRM_PROPERTIES, getActionLabel, getEntityLabel, getPropertiesForEntity,
+  getDefaultMatchKeys, entityForAction, entityBadgeClasses,
+  type CrmAction, type CrmPropertySeed,
+} from "@/lib/crm-catalog";
 
 type Tab = "submission" | "automation" | "style" | "settings";
 
@@ -52,8 +57,6 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 
 function SubmissionTab({ form }: { form: Form }) {
   const store = useStore();
-  const [contactMatchOpen, setContactMatchOpen] = useState(false);
-  const includedFields = form.sections.flatMap((s) => getSectionFields(s).filter((f) => f.included && f.type !== "hidden"));
 
   return (
     <div>
@@ -88,171 +91,211 @@ function SubmissionTab({ form }: { form: Form }) {
         </Labeled>
       )}
 
-      {/* CRM action */}
+      {/* CRM action — single catalog-driven panel for all 13 entity types */}
       <div className="mt-4 border-t border-border pt-4">
-        <div className="mb-2 text-sm font-semibold">CRM Action</div>
-        <select value={form.crm.action} onChange={(e) => store.updateForm(form.id, { crm: { ...form.crm, action: e.target.value as never } })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
-          <option value="none">Do nothing</option>
-          <option value="lead">Create Lead</option>
-          <option value="deal">Create Deal</option>
-          <option value="lead_deal">Create Lead + Deal</option>
-          <option value="ticket">Create Support Ticket</option>
-        </select>
-
-        {form.crm.action !== "none" && (
-          <div className="mt-3 space-y-1.5">
-            <label className="block text-[11px] font-medium text-muted-foreground">If a record with this email already exists:</label>
-            <select
-              value={form.crm.duplicateAction ?? "update"}
-              onChange={(e) => store.updateForm(form.id, { crm: { ...form.crm, duplicateAction: e.target.value as never } })}
-              className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm focus:border-primary focus:outline-none"
-            >
-              <option value="update">Update existing record</option>
-              <option value="create_anyway">Create new record anyway</option>
-              <option value="skip">Do nothing (skip)</option>
-            </select>
-            {(form.crm.duplicateAction ?? "update") === "update" && (
-              <p className="rounded-md bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-[11px] text-amber-800">
-                Submitted values will overwrite existing field values on the matching Lead/Customer record.
-              </p>
-            )}
-          </div>
-        )}
-
-        {form.crm.action !== "none" && (
-          <div className="mt-3 space-y-3">
-            {(form.crm.action === "lead" || form.crm.action === "lead_deal") && (
-              <>
-                <div className="rounded-lg border border-border bg-background overflow-hidden">
-                  <div className="grid grid-cols-2 gap-px bg-border text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    <div className="bg-muted/60 px-2 py-1.5">Form Field</div>
-                    <div className="bg-muted/60 px-2 py-1.5">Lead Property</div>
-                  </div>
-                  <div className="divide-y divide-border">
-                    {includedFields.map((f) => (
-                      <div key={f.id} className="grid grid-cols-2 gap-px bg-border">
-                        <div className="flex items-center bg-background px-2 py-1.5 text-[11px] font-medium truncate">{f.displayName}</div>
-                        <div className="bg-background px-1.5 py-1">
-                          <select
-                            value={form.crm.fieldMap[f.id] ?? ""}
-                            onChange={(e) => store.updateForm(form.id, { crm: { ...form.crm, fieldMap: { ...form.crm.fieldMap, [f.id]: e.target.value } } })}
-                            className="w-full rounded border border-border bg-background px-1.5 py-1 text-[11px]"
-                          >
-                            <option value="">— Skip —</option>
-                            <option value="lead_name">Lead Name</option>
-                            <option value="email">Email</option>
-                            <option value="phone">Phone</option>
-                            <option value="company">Company</option>
-                            <option value="lead_source">Lead Source</option>
-                            <option value="industry">Industry</option>
-                            <option value="website">Website</option>
-                            <option value="notes">Notes</option>
-                          </select>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <Labeled label="Set Lead Status">
-                  <select value={form.crm.defaultLeadStatus || "New"} onChange={(e) => store.updateForm(form.id, { crm: { ...form.crm, defaultLeadStatus: e.target.value } })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
-                    {["New", "Prospect", "Qualified", "Won", "Lost"].map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </Labeled>
-              </>
-            )}
-            {(form.crm.action === "deal" || form.crm.action === "lead_deal") && (
-              <Labeled label="Set Deal Stage">
-                <select value={form.crm.defaultDealStage || "Discovery"} onChange={(e) => store.updateForm(form.id, { crm: { ...form.crm, defaultDealStage: e.target.value } })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
-                  {["Discovery", "Proposal", "Negotiation", "Closed Won", "Closed Lost"].map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </Labeled>
-            )}
-            {form.crm.action === "ticket" && (
-              <>
-                <div className="rounded-lg border border-border bg-background overflow-hidden">
-                  <div className="grid grid-cols-2 gap-px bg-border text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    <div className="bg-muted/60 px-2 py-1.5">Form Field</div>
-                    <div className="bg-muted/60 px-2 py-1.5">Ticket Property</div>
-                  </div>
-                  <div className="divide-y divide-border">
-                    {includedFields.map((f) => (
-                      <div key={f.id} className="grid grid-cols-2 gap-px bg-border">
-                        <div className="flex items-center bg-background px-2 py-1.5 text-[11px] font-medium truncate">{f.displayName}</div>
-                        <div className="bg-background px-1.5 py-1">
-                          <select
-                            value={form.crm.fieldMap[f.id] ?? ""}
-                            onChange={(e) => store.updateForm(form.id, { crm: { ...form.crm, fieldMap: { ...form.crm.fieldMap, [f.id]: e.target.value } } })}
-                            className="w-full rounded border border-border bg-background px-1.5 py-1 text-[11px]"
-                          >
-                            <option value="">— Skip —</option>
-                            <option value="subject">Subject</option>
-                            <option value="description">Description</option>
-                            <option value="priority">Priority</option>
-                            <option value="type">Type</option>
-                          </select>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <p className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] text-blue-800">
-                  Ticket will be created in the Claims module and assigned to the Support team.
-                </p>
-              </>
-            )}
-            {form.crm.action !== "ticket" && (
-              <p className="rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-[11px] text-muted-foreground">
-                Status will not be moved backward if the record is already at a later stage.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Contact Matching */}
-      <div className="mt-4 border-t border-border pt-4">
-        <button onClick={() => setContactMatchOpen((o) => !o)} className="flex w-full items-center justify-between text-sm font-semibold">
-          Contact Matching
-          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${contactMatchOpen ? "rotate-180" : ""}`} />
-        </button>
-        {contactMatchOpen && (
-          <div className="mt-3 space-y-3">
-            <div className="space-y-1.5">
-              <div className="text-[11px] font-medium text-muted-foreground">Match submissions to existing records by:</div>
-              {([
-                { key: "matchByEmail", label: "Email address", defaultOn: true },
-                { key: "matchByCompany", label: "Company name", defaultOn: false },
-                { key: "matchByPhone", label: "Phone number", defaultOn: false },
-              ] as const).map(({ key, label, defaultOn }) => (
-                <label key={key} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 accent-primary"
-                    checked={form.crm[key] ?? defaultOn}
-                    onChange={(e) => store.updateForm(form.id, { crm: { ...form.crm, [key]: e.target.checked } })}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-            <Labeled label="When a match is found:">
-              <select
-                value={form.crm.matchFoundAction ?? "link"}
-                onChange={(e) => store.updateForm(form.id, { crm: { ...form.crm, matchFoundAction: e.target.value as never } })}
-                className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
-              >
-                <option value="link">Link submission to existing record</option>
-                <option value="link_update">Link and update record fields</option>
-                <option value="ignore">Ignore match (always create new)</option>
-              </select>
-            </Labeled>
-            <p className="rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-[11px] text-muted-foreground">
-              Kai will also run duplicate detection on new record creation.
-            </p>
-          </div>
-        )}
+        <EntityActionPanel form={form} />
       </div>
     </div>
+  );
+}
+
+// One component for all 13 CRM actions. The catalog drives everything that
+// appears below the action selector — no per-entity hardcoded panels.
+function EntityActionPanel({ form }: { form: Form }) {
+  const store = useStore();
+  const action = form.crm.action;
+  const entity = entityForAction(action);
+
+  const setCrm = (patch: Partial<typeof form.crm>) =>
+    store.updateForm(form.id, { crm: { ...form.crm, ...patch } });
+
+  // Changing the action resets match keys to the new entity's defaults and
+  // clears the field map (old mappings don't apply to a different entity).
+  const onActionChange = (next: CrmAction) => {
+    setCrm({ action: next, matchKeys: getDefaultMatchKeys(next), fieldMap: {}, defaults: {} });
+  };
+
+  return (
+    <div>
+      <div className="mb-2 text-sm font-semibold">CRM Action</div>
+      <select
+        value={action}
+        onChange={(e) => onActionChange(e.target.value as CrmAction)}
+        className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm focus:border-primary focus:outline-none"
+      >
+        <option value="none">{getActionLabel("none")}</option>
+        {CRM_ACTIONS.map((a) => (
+          <option key={a} value={a}>{getActionLabel(a)}</option>
+        ))}
+      </select>
+
+      {action === "none" || !entity ? (
+        <p className="mt-3 rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+          No CRM record will be created when this form is submitted.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <RecordMatchingSection form={form} action={action} setCrm={setCrm} />
+          <DefaultsSection form={form} entity={entity} setCrm={setCrm} />
+          <FieldMappingSection form={form} entity={entity} setCrm={setCrm} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+type SetCrm = (patch: Partial<Form["crm"]>) => void;
+
+function findProp(id: string): CrmPropertySeed | undefined {
+  return CRM_PROPERTIES.find((p) => p.id === id);
+}
+
+// Only shown for entities that have match keys. Always-create entities
+// (quote, order, sample_request, claim, ticket) get no defaults → hidden.
+function RecordMatchingSection({ form, action, setCrm }: { form: Form; action: CrmAction; setCrm: SetCrm }) {
+  const defaultKeys = getDefaultMatchKeys(action);
+  if (defaultKeys.length === 0) return null;
+
+  const selected = new Set(form.crm.matchKeys);
+  const toggle = (key: string, on: boolean) => {
+    const next = on ? [...selected, key] : [...selected].filter((k) => k !== key);
+    setCrm({ matchKeys: next });
+  };
+
+  return (
+    <section className="rounded-lg border border-border bg-background p-2.5">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Record Matching</div>
+      <p className="mt-1 text-[11px] text-muted-foreground">Match incoming submissions to existing records by:</p>
+      <div className="mt-2 space-y-1.5">
+        {defaultKeys.map((key) => {
+          const prop = findProp(key);
+          return (
+            <label key={key} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={selected.has(key)}
+                onChange={(e) => toggle(key, e.target.checked)}
+              />
+              {prop?.label ?? key}
+            </label>
+          );
+        })}
+      </div>
+      <Labeled label="When a match is found:">
+        <select
+          value={form.crm.matchFoundAction ?? "link"}
+          onChange={(e) => setCrm({ matchFoundAction: e.target.value as Form["crm"]["matchFoundAction"] })}
+          className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
+        >
+          <option value="link">Link to existing record</option>
+          <option value="link_update">Link and update fields</option>
+          <option value="ignore">Ignore match (always create new)</option>
+        </select>
+      </Labeled>
+    </section>
+  );
+}
+
+// Auto-generated from the entity's select and checkbox properties.
+function DefaultsSection({ form, entity, setCrm }: { form: Form; entity: NonNullable<ReturnType<typeof entityForAction>>; setCrm: SetCrm }) {
+  const props = getPropertiesForEntity(entity).filter(
+    (p) => (p.defaultFieldType === "select" && p.options?.length) || p.defaultFieldType === "checkbox",
+  );
+  if (props.length === 0) return null;
+
+  const setDefault = (id: string, value: string | boolean) =>
+    setCrm({ defaults: { ...form.crm.defaults, [id]: value } });
+
+  return (
+    <section className="rounded-lg border border-border bg-background p-2.5">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Defaults</div>
+      <div className="mt-2 space-y-1.5">
+        {props.map((p) => {
+          const current = form.crm.defaults[p.id];
+          if (p.defaultFieldType === "checkbox") {
+            return (
+              <label key={p.id} className="flex items-center justify-between gap-2 py-1 text-sm">
+                <span>Default {p.label}</span>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={current === true}
+                  onChange={(e) => setDefault(p.id, e.target.checked)}
+                />
+              </label>
+            );
+          }
+          return (
+            <Labeled key={p.id} label={`Default ${p.label}`}>
+              <select
+                value={typeof current === "string" ? current : ""}
+                onChange={(e) => setDefault(p.id, e.target.value)}
+                className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
+              >
+                <option value="">— None —</option>
+                {p.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </Labeled>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// Maps form fields on the canvas onto the entity's catalog properties.
+function FieldMappingSection({ form, entity, setCrm }: { form: Form; entity: NonNullable<ReturnType<typeof entityForAction>>; setCrm: SetCrm }) {
+  const includedFields = form.sections.flatMap((s) => getSectionFields(s).filter((f) => f.included && f.type !== "hidden"));
+  const props = getPropertiesForEntity(entity);
+
+  // fieldMap is keyed by property id → form field id.
+  const setMapping = (propertyId: string, fieldId: string) => {
+    const next = { ...form.crm.fieldMap };
+    if (fieldId) next[propertyId] = fieldId;
+    else delete next[propertyId];
+    setCrm({ fieldMap: next });
+  };
+
+  return (
+    <section className="rounded-lg border border-border bg-background overflow-hidden">
+      <div className="grid grid-cols-2 gap-px bg-border text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <div className="bg-muted/60 px-2 py-1.5">Entity Property</div>
+        <div className="bg-muted/60 px-2 py-1.5">Populate from</div>
+      </div>
+      <div className="max-h-72 divide-y divide-border overflow-y-auto">
+        {props.map((p) => (
+          <div key={p.id} className="grid grid-cols-2 gap-px bg-border">
+            <div className="flex flex-col justify-center bg-background px-2 py-1.5">
+              <span className="flex items-center gap-1 text-[11px] font-medium truncate">
+                {p.commonlyUsed && <Star className="h-2.5 w-2.5 shrink-0 fill-green-500 text-green-500" />}
+                <span className={p.commonlyUsed ? "font-semibold" : ""}>{p.label}</span>
+              </span>
+              <span className="flex items-center gap-1 text-[9px] text-muted-foreground">
+                {p.group}
+                {p.lookupEntity && (
+                  <span className={`rounded-full px-1 py-px text-[8px] font-medium ${entityBadgeClasses(p.lookupEntity)}`}>
+                    Lookup → {getEntityLabel(p.lookupEntity)}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="bg-background px-1.5 py-1">
+              <select
+                value={form.crm.fieldMap[p.id] ?? ""}
+                onChange={(e) => setMapping(p.id, e.target.value)}
+                className="w-full rounded border border-border bg-background px-1.5 py-1 text-[11px]"
+              >
+                <option value="">— Not mapped —</option>
+                {includedFields.map((f) => (
+                  <option key={f.id} value={f.id}>{f.displayName}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
