@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import type { CrmPropertySeed, CrmAction, EntityType } from "./crm-catalog";
-import { getDefaultMatchKeys } from "./crm-catalog";
+import { getDefaultMatchKeys, CRM_PROPERTIES } from "./crm-catalog";
 export type { CrmPropertySeed };
 
 export type FieldType =
@@ -286,6 +286,42 @@ function legacySection(name: string, quickAdd: boolean, show: boolean, fields: F
   return { id: uid(), name, quickAdd, show, rows: [], fields };
 }
 
+// ── V2 seed-form helpers ────────────────────────────────────────────────────
+// pf() builds a form field linked to a catalog property — label, type, options
+// and lookupEntity are pulled straight from the catalog so IDs stay valid.
+function pf(propertyId: string, overrides: Partial<FormField> = {}): FormField {
+  const prop = CRM_PROPERTIES.find((p) => p.id === propertyId);
+  if (!prop) {
+    // Surface bad IDs loudly during dev rather than shipping a dangling link.
+    if (typeof console !== "undefined") console.warn(`[seed] unknown property id: ${propertyId}`);
+  }
+  return {
+    id: uid(),
+    displayName: prop?.label ?? propertyId,
+    type: prop?.defaultFieldType ?? "text",
+    required: false,
+    included: true,
+    propertyId,
+    ...(prop?.options ? { options: prop.options } : {}),
+    ...(prop?.lookupEntity ? { lookupEntity: prop.lookupEntity } : {}),
+    ...overrides,
+  };
+}
+
+// ff() builds a free-standing field with no catalog link (e.g. an "Additional
+// notes" box where no matching catalog property exists).
+function ff(displayName: string, type: FieldType, overrides: Partial<FormField> = {}): FormField {
+  return { id: uid(), displayName, type, required: false, included: true, ...overrides };
+}
+
+// A row-based section: each field becomes its own full-width row.
+function seedSection(name: string, fields: FormField[], opts: { quickAdd?: boolean } = {}): FormSection {
+  return {
+    id: uid(), name, quickAdd: opts.quickAdd ?? false, show: true,
+    rows: fields.map((f) => ({ id: uid(), kind: "fields", fields: [{ ...f, width: "full" }] })),
+  };
+}
+
 function leadCaptureForm(): Form {
   return {
     id: "f_trade_show", name: "Trade Show Lead Capture", slug: "trade-show",
@@ -401,6 +437,277 @@ const RAW_SEED_FORMS: Form[] = [
     crm: { action: "log_activity", fieldMap: {}, matchKeys: getDefaultMatchKeys("log_activity"), defaults: { activity_type: "post_purchase_survey" } },
     automation: { sendEmail: false, emailTemplate: "General Acknowledgement", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Low" },
     submissionCount: 89, viewCount: 642,
+  },
+
+  // ── 8 new V2 seed forms ───────────────────────────────────────────────────
+  {
+    id: "f_sample_request", name: "Sample Request", slug: "sample-request",
+    description: "Request product samples for evaluation.",
+    status: "published", kind: "Custom",
+    createdAt: "2026-06-09", updatedAt: "2026-06-09",
+    multiStep: false,
+    sections: [
+      seedSection("Product Details", [
+        pf("sample_request.sku", { required: true }),
+        pf("sample_request.variant"),
+        pf("sample_request.qty", { required: true }),
+      ], { quickAdd: true }),
+      seedSection("Request Details", [
+        pf("sample_request.purpose"),
+        pf("sample_request.expected_order_volume_bucket"),
+        pf("sample_request.willing_to_pay"),
+        pf("sample_request.ship_to", { required: true }),
+        pf("sample_request.return_due_date"),
+      ]),
+      seedSection("Additional", [
+        ff("Notes", "long_text", { placeholder: "Anything else we should know?" }),
+        pf("sample_request.trade_show"),
+      ]),
+    ],
+    afterSubmit: { mode: "message", message: "Sample request received. We'll ship shortly.", redirectUrl: "", delay: 3 },
+    crm: { action: "create_sample_request", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_sample_request"), defaults: { status: "requested" } },
+    automation: { sendEmail: true, emailTemplate: "Thank You", notifyTeam: true, notifyTargets: ["Auto-assigned rep"], createTask: true, taskTitle: "Ship sample & schedule follow-up", taskAssignee: "Auto-assigned rep", taskDue: "+1 day", taskPriority: "Medium" },
+    submissionCount: 0, viewCount: 0,
+  },
+  {
+    id: "f_dealer_app", name: "Dealer / Reseller Application", slug: "dealer-application",
+    description: "Apply to become an authorized dealer.",
+    status: "published", kind: "Lead Capture",
+    createdAt: "2026-06-09", updatedAt: "2026-06-09",
+    multiStep: true,
+    sections: [
+      seedSection("Business Information", [
+        pf("retailer.legal_name", { required: true }),
+        pf("retailer.dba"),
+        pf("retailer.ein", { required: true }),
+        pf("retailer.business_type"),
+        pf("retailer.website"),
+        pf("retailer.years_in_business"),
+        pf("retailer.categories_carried"),
+        pf("retailer.channels"),
+      ], { quickAdd: true }),
+      seedSection("Territory & Commitment", [
+        pf("retailer.territory_assigned"),
+        pf("retailer.exclusivity_type"),
+        pf("retailer.minimum_annual_commitment"),
+        pf("retailer.store_count"),
+      ]),
+      seedSection("Contact", [
+        pf("buyer.first_name", { required: true }),
+        pf("buyer.last_name", { required: true }),
+        pf("buyer.email", { required: true }),
+        pf("buyer.phone"),
+      ]),
+    ],
+    afterSubmit: { mode: "message", message: "Application received. Our team will review and follow up.", redirectUrl: "", delay: 3 },
+    crm: { action: "create_retailer_account", fieldMap: {}, matchKeys: ["retailer.ein", "retailer.legal_name"], defaults: { opening_order_status: "prospect", business_type: "independent_retailer" } },
+    automation: { sendEmail: true, emailTemplate: "Account Application Received", notifyTeam: true, notifyTargets: ["John Carmichael"], createTask: true, taskTitle: "Review dealer application", taskAssignee: "John Carmichael", taskDue: "+2 days", taskPriority: "High" },
+    submissionCount: 0, viewCount: 0,
+  },
+  {
+    id: "f_tax_exempt", name: "Tax Exemption Certificate", slug: "tax-exemption",
+    description: "Submit a resale or tax exemption certificate.",
+    status: "published", kind: "Custom",
+    createdAt: "2026-06-09", updatedAt: "2026-06-09",
+    multiStep: false,
+    sections: [
+      seedSection("Certificate Details", [
+        pf("tax_exemption.exemption_type", { required: true }),
+        pf("tax_exemption.state", { required: true }),
+        pf("tax_exemption.certificate_number", { required: true }),
+        pf("tax_exemption.expiration_date"),
+        pf("tax_exemption.certificate_file", { required: true }),
+        pf("tax_exemption.authorized_signatory"),
+      ], { quickAdd: true }),
+    ],
+    afterSubmit: { mode: "message", message: "Certificate received. We'll verify it shortly.", redirectUrl: "", delay: 3 },
+    crm: { action: "create_tax_exemption", fieldMap: {}, matchKeys: ["tax_exemption.retailer", "tax_exemption.state"], defaults: { status: "pending" } },
+    automation: { sendEmail: false, emailTemplate: "Thank You", notifyTeam: true, notifyTargets: ["Admin"], createTask: true, taskTitle: "Verify tax exemption certificate", taskAssignee: "Admin", taskDue: "+2 days", taskPriority: "Medium" },
+    submissionCount: 0, viewCount: 0,
+  },
+  {
+    id: "f_claim", name: "Claim / RMA", slug: "claim-rma",
+    description: "File a damage, defect, or shortage claim.",
+    status: "published", kind: "Custom",
+    createdAt: "2026-06-09", updatedAt: "2026-06-09",
+    multiStep: false,
+    sections: [
+      seedSection("Claim Details", [
+        pf("claim.claim_type", { required: true }),
+        pf("claim.source_order", { required: true }),
+        pf("claim.preferred_resolution"),
+        pf("claim.urgency"),
+      ], { quickAdd: true }),
+      // Repeatable block — one set of claim-line fields per affected item.
+      seedSection("Items Affected", [
+        pf("claim.claim_line_sku"),
+        pf("claim.claim_line_qty_affected"),
+        pf("claim.claim_line_issue_description"),
+        pf("claim.claim_line_photo_evidence"),
+      ]),
+      seedSection("Additional", [
+        ff("Notes", "long_text", { placeholder: "Additional details about the claim" }),
+      ]),
+    ],
+    afterSubmit: { mode: "message", message: "Claim submitted. Our support team will be in touch.", redirectUrl: "", delay: 3 },
+    crm: { action: "create_claim", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_claim"), defaults: { status: "submitted" } },
+    automation: { sendEmail: true, emailTemplate: "General Acknowledgement", notifyTeam: true, notifyTargets: ["Admin"], createTask: true, taskTitle: "Review claim / RMA", taskAssignee: "Admin", taskDue: "+1 day", taskPriority: "High" },
+    submissionCount: 0, viewCount: 0,
+  },
+  {
+    id: "f_standing_order", name: "Standing Order Setup", slug: "standing-order",
+    description: "Set up a recurring standing order.",
+    status: "published", kind: "Custom",
+    createdAt: "2026-06-09", updatedAt: "2026-06-09",
+    multiStep: true,
+    sections: [
+      seedSection("Schedule", [
+        pf("standing_order.name", { required: true }),
+        pf("standing_order.frequency", { required: true }),
+        pf("standing_order.seasonal_months", {
+          conditions: { logic: "AND", rules: [{ fieldId: "standing_order.frequency", operator: "equals", value: "seasonal" }] },
+        }),
+        pf("standing_order.start_date", { required: true }),
+        pf("standing_order.end_date"),
+        pf("standing_order.mode"),
+      ], { quickAdd: true }),
+      // Repeatable block — one SKU + qty line per product.
+      seedSection("Products", [
+        ff("SKU", "lookup", { lookupEntity: "sku" }),
+        ff("Quantity", "number"),
+      ]),
+      seedSection("Payment & Shipping", [
+        pf("standing_order.payment_method"),
+        pf("standing_order.preferred_shipping_method"),
+      ]),
+    ],
+    afterSubmit: { mode: "message", message: "Standing order configured. First run will be reviewed before shipping.", redirectUrl: "", delay: 3 },
+    crm: { action: "create_standing_order", fieldMap: {}, matchKeys: ["standing_order.retailer", "standing_order.name"], defaults: { status: "active", mode: "review_before_shipping" } },
+    automation: { sendEmail: true, emailTemplate: "Thank You", notifyTeam: true, notifyTargets: ["Auto-assigned rep"], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Medium" },
+    submissionCount: 0, viewCount: 0,
+  },
+  {
+    id: "f_catalog", name: "Catalog Request", slug: "catalog-request",
+    description: "Request our latest product catalog.",
+    status: "published", kind: "Contact",
+    createdAt: "2026-06-09", updatedAt: "2026-06-09",
+    multiStep: false,
+    sections: [
+      seedSection("Your Information", [
+        pf("retailer.legal_name", { displayName: "Name", required: true }),
+        pf("buyer.email", { required: true }),
+        pf("buyer.phone"),
+      ], { quickAdd: true }),
+      seedSection("Catalog Preferences", [
+        pf("retailer.categories_carried", { displayName: "Categories of interest" }),
+        ff("Preferred format", "select", {
+          options: [
+            { label: "Digital", value: "digital" },
+            { label: "Physical", value: "physical" },
+            { label: "Both", value: "both" },
+          ],
+        }),
+      ]),
+      seedSection("Shipping", [
+        ff("Shipping address", "long_text", {
+          placeholder: "Street, city, state, ZIP",
+          conditions: { logic: "OR", rules: [
+            { fieldId: "Preferred format", operator: "equals", value: "physical" },
+            { fieldId: "Preferred format", operator: "equals", value: "both" },
+          ] },
+        }),
+      ]),
+    ],
+    afterSubmit: { mode: "message", message: "Thanks! Your catalog is on its way.", redirectUrl: "", delay: 3 },
+    crm: { action: "log_activity", fieldMap: {}, matchKeys: getDefaultMatchKeys("log_activity"), defaults: { activity_type: "catalog_drop_sent" } },
+    automation: { sendEmail: true, emailTemplate: "Thank You", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Low" },
+    submissionCount: 0, viewCount: 0,
+  },
+  {
+    id: "f_vendor", name: "Vendor Onboarding", slug: "vendor-onboarding",
+    description: "Onboard a new supplier or vendor.",
+    status: "published", kind: "Custom",
+    createdAt: "2026-06-09", updatedAt: "2026-06-09",
+    multiStep: true,
+    sections: [
+      seedSection("Business Details", [
+        pf("vendor.legal_name", { required: true }),
+        pf("vendor.dba"),
+        pf("vendor.ein", { required: true }),
+        pf("vendor.contact_name", { required: true }),
+        pf("vendor.email", { required: true }),
+        pf("vendor.phone"),
+        pf("vendor.website"),
+      ], { quickAdd: true }),
+      seedSection("Compliance", [
+        pf("vendor.w9_file", { required: true }),
+        pf("vendor.insurance_cert_file"),
+        pf("vendor.insurance_expiry"),
+        pf("vendor.compliance_certifications"),
+      ]),
+      seedSection("Terms", [
+        pf("vendor.payment_terms_requested"),
+        pf("vendor.product_categories"),
+        pf("vendor.moq_policy"),
+        pf("vendor.lead_time"),
+        pf("vendor.returns_policy"),
+      ]),
+    ],
+    afterSubmit: { mode: "message", message: "Vendor application received. We'll begin onboarding.", redirectUrl: "", delay: 3 },
+    crm: { action: "create_vendor", fieldMap: {}, matchKeys: ["vendor.ein"], defaults: { status: "onboarding" } },
+    automation: { sendEmail: true, emailTemplate: "Account Application Received", notifyTeam: true, notifyTargets: ["Admin"], createTask: true, taskTitle: "Onboard new vendor", taskAssignee: "Admin", taskDue: "+1 week", taskPriority: "Medium" },
+    submissionCount: 0, viewCount: 0,
+  },
+  {
+    id: "f_abr", name: "Annual Business Review Intake", slug: "abr-intake",
+    description: "Collect annual business review feedback from retailers.",
+    status: "draft", kind: "Custom",
+    createdAt: "2026-06-09", updatedAt: "2026-06-09",
+    multiStep: true,
+    sections: [
+      seedSection("Ratings", [
+        ff("Overall satisfaction", "rating", { ratingScale: 5, required: true }),
+        ff("Product quality", "rating", { ratingScale: 5 }),
+        ff("Service", "rating", { ratingScale: 5 }),
+      ], { quickAdd: true }),
+      seedSection("Forward-Looking", [
+        ff("Categories for next year", "multi_select", {
+          options: [
+            { label: "Lighting", value: "lighting" },
+            { label: "Furniture", value: "furniture" },
+            { label: "Home Decor", value: "home_decor" },
+            { label: "Textiles", value: "textiles" },
+            { label: "Rugs", value: "rugs" },
+            { label: "Outdoor", value: "outdoor" },
+            { label: "Gift", value: "gift" },
+          ],
+        }),
+        ff("Budget change", "select", {
+          options: [
+            { label: "Decrease 20%+", value: "decrease_20_plus" },
+            { label: "Decrease 10–20%", value: "decrease_10_20" },
+            { label: "About the same", value: "same" },
+            { label: "Increase 10–20%", value: "increase_10_20" },
+            { label: "Increase 20%+", value: "increase_20_plus" },
+          ],
+        }),
+      ]),
+      seedSection("Open Feedback", [
+        ff("What could we improve?", "long_text"),
+        ff("New products wanted", "long_text"),
+        ff("Willing to provide a testimonial?", "select", {
+          options: [
+            { label: "Yes", value: "yes" },
+            { label: "Maybe", value: "maybe" },
+            { label: "No", value: "no" },
+          ],
+        }),
+      ]),
+    ],
+    afterSubmit: { mode: "message", message: "Thank you for your feedback!", redirectUrl: "", delay: 3 },
+    crm: { action: "log_activity", fieldMap: {}, matchKeys: getDefaultMatchKeys("log_activity"), defaults: { activity_type: "abr_meeting" } },
+    automation: { sendEmail: false, emailTemplate: "General Acknowledgement", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Low" },
+    submissionCount: 0, viewCount: 0,
   },
 ];
 
