@@ -2,12 +2,12 @@ import { useMemo, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { ChevronDown, ChevronRight, Sparkles, Check } from "lucide-react";
 import { useStore, getSectionFields, type Form } from "@/lib/forms-store";
-import { CRM_PROPERTY_CATALOG, PROPERTY_GROUPS, objectTypeBadgeClasses, objectTypeLabel, type CrmProperty } from "@/lib/crm-catalog";
+import { CRM_PROPERTIES, PROPERTY_GROUPS, entityBadgeClasses, type CrmPropertySeed } from "@/lib/crm-catalog";
 import type { DragData } from "./types";
 
 export function LeftPanelFields({ form, query }: { form: Form; query: string }) {
   const store = useStore();
-  const allProps = useMemo(() => [...CRM_PROPERTY_CATALOG, ...store.customProperties], [store.customProperties]);
+  const allProps = useMemo(() => [...CRM_PROPERTIES, ...store.customProperties], [store.customProperties]);
   const usedPropertyIds = useMemo(() => {
     const ids = new Set<string>();
     for (const s of form.sections) for (const f of getSectionFields(s)) if (f.propertyId) ids.add(f.propertyId);
@@ -26,21 +26,22 @@ export function LeftPanelFields({ form, query }: { form: Form; query: string }) 
     return arr;
   }, [form]);
 
-  // Kai suggestion: if Email and Company Name in form, but not Industry, suggest Industry / Company Size / Annual Revenue
+  // Kai suggestion: if buyer email + retailer legal name are in the form but
+  // business type isn't, suggest the common retailer-profile fields.
   const kaiSuggestions = useMemo(() => {
-    const hasEmail = usedPropertyIds.has("contact.email") || fieldsInForm.some((f) => f.type === "email" || /email/i.test(f.displayName));
-    const hasCompany = usedPropertyIds.has("company.name") || fieldsInForm.some((f) => /company.*name|company name/i.test(f.displayName));
-    const hasIndustry = usedPropertyIds.has("company.industry") || fieldsInForm.some((f) => /industry/i.test(f.displayName));
-    if (hasEmail && hasCompany && !hasIndustry) {
-      return ["company.industry", "company.size", "company.revenue"]
+    const hasEmail = usedPropertyIds.has("buyer.email") || fieldsInForm.some((f) => f.type === "email" || /email/i.test(f.displayName));
+    const hasRetailer = usedPropertyIds.has("retailer.legal_name") || fieldsInForm.some((f) => /legal name|company name|business name/i.test(f.displayName));
+    const hasBusinessType = usedPropertyIds.has("retailer.business_type") || fieldsInForm.some((f) => /business type/i.test(f.displayName));
+    if (hasEmail && hasRetailer && !hasBusinessType) {
+      return ["retailer.business_type", "retailer.categories_carried", "retailer.website"]
         .map((id) => allProps.find((p) => p.id === id))
-        .filter((x): x is CrmProperty => !!x);
+        .filter((x): x is CrmPropertySeed => !!x);
     }
     return [];
   }, [usedPropertyIds, fieldsInForm, allProps]);
 
   const q = query.trim().toLowerCase();
-  const matches = (p: CrmProperty) => !q || p.label.toLowerCase().includes(q) || p.group.toLowerCase().includes(q);
+  const matches = (p: CrmPropertySeed) => !q || p.label.toLowerCase().includes(q) || p.group.toLowerCase().includes(q);
 
   return (
     <div className="p-3 space-y-4">
@@ -73,16 +74,21 @@ export function LeftPanelFields({ form, query }: { form: Form; query: string }) 
         </div>
       )}
 
-      {/* Available fields grouped */}
-      <Section title="Available fields" defaultOpen>
-        <div className="space-y-3">
-          {PROPERTY_GROUPS.map((group) => {
-            const props = allProps.filter((p) => p.group === group.name && matches(p));
-            if (props.length === 0) return null;
-            return (
-              <PropertyGroup key={group.name} groupName={group.name} properties={props} usedIds={usedPropertyIds} />
-            );
-          })}
+      {/* Createable entities (13) */}
+      <Section title="Createable entities" defaultOpen>
+        <div className="space-y-4">
+          {PROPERTY_GROUPS.filter((g) => !g.referenceOnly).map((group) => (
+            <EntityBlock key={group.entity} group={group} allProps={allProps} matches={matches} usedPropertyIds={usedPropertyIds} />
+          ))}
+        </div>
+      </Section>
+
+      {/* Reference-only entities (6) — dimmer, collapsed by default */}
+      <Section title="Reference-only entities">
+        <div className="space-y-4 opacity-70">
+          {PROPERTY_GROUPS.filter((g) => g.referenceOnly).map((group) => (
+            <EntityBlock key={group.entity} group={group} allProps={allProps} matches={matches} usedPropertyIds={usedPropertyIds} />
+          ))}
         </div>
       </Section>
     </div>
@@ -102,7 +108,38 @@ function Section({ title, children, defaultOpen }: { title: string; children: Re
   );
 }
 
-function PropertyGroup({ groupName, properties, usedIds }: { groupName: string; properties: CrmProperty[]; usedIds: Set<string> }) {
+function EntityBlock({
+  group,
+  allProps,
+  matches,
+  usedPropertyIds,
+}: {
+  group: (typeof PROPERTY_GROUPS)[number];
+  allProps: CrmPropertySeed[];
+  matches: (p: CrmPropertySeed) => boolean;
+  usedPropertyIds: Set<string>;
+}) {
+  const entityProps = allProps.filter((p) => p.entity === group.entity && matches(p));
+  if (entityProps.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 px-0.5">
+        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${entityBadgeClasses(group.entity)}`}>
+          {group.label}
+        </span>
+      </div>
+      {group.subGroups.map((sub) => {
+        const props = entityProps.filter((p) => p.group === sub);
+        if (props.length === 0) return null;
+        return (
+          <PropertyGroup key={group.entity + ":" + sub} groupName={sub} properties={props} usedIds={usedPropertyIds} />
+        );
+      })}
+    </div>
+  );
+}
+
+function PropertyGroup({ groupName, properties, usedIds }: { groupName: string; properties: CrmPropertySeed[]; usedIds: Set<string> }) {
   const [open, setOpen] = useState(true);
   return (
     <div className="rounded-md border border-border bg-white">
@@ -122,7 +159,7 @@ function PropertyGroup({ groupName, properties, usedIds }: { groupName: string; 
   );
 }
 
-function PropertyItem({ property, inUse }: { property: CrmProperty; inUse: boolean }) {
+function PropertyItem({ property, inUse }: { property: CrmPropertySeed; inUse: boolean }) {
   const dragData: DragData = { source: "libraryProperty", propertyId: property.id };
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: "lib-prop-" + property.id,
@@ -138,15 +175,13 @@ function PropertyItem({ property, inUse }: { property: CrmProperty; inUse: boole
     >
       {property.commonlyUsed && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" title="Commonly used" />}
       <span className="flex-1 truncate font-medium text-foreground">{property.label}</span>
-      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${objectTypeBadgeClasses(property.objectType)}`}>
-        {objectTypeLabel(property.objectType)}
-      </span>
+      {property.helpText && <span className="shrink-0 text-muted-foreground" title={property.helpText}>ℹ️</span>}
       {inUse && <Check className="h-3 w-3 shrink-0 text-green-600" />}
     </li>
   );
 }
 
-function KaiSuggestionChip({ property }: { property: CrmProperty }) {
+function KaiSuggestionChip({ property }: { property: CrmPropertySeed }) {
   const dragData: DragData = { source: "libraryProperty", propertyId: property.id };
   const { attributes, listeners, setNodeRef } = useDraggable({ id: "kai-" + property.id, data: dragData });
   return (

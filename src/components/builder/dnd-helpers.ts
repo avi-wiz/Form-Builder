@@ -1,7 +1,7 @@
 import type { DragEndEvent } from "@dnd-kit/core";
 import type { Form, FormField, FormRow, FieldType } from "@/lib/forms-store";
 import { newField, newId } from "@/lib/forms-store";
-import { CRM_PROPERTY_CATALOG } from "@/lib/crm-catalog";
+import { CRM_PROPERTIES } from "@/lib/crm-catalog";
 import type { DragData, DropData } from "./types";
 
 interface StoreActions {
@@ -14,7 +14,7 @@ interface StoreActions {
   reorderSections: (formId: string, ids: string[]) => void;
 }
 
-function propertyToField(propertyId: string, allProperties: typeof CRM_PROPERTY_CATALOG): FormField | null {
+function propertyToField(propertyId: string, allProperties: typeof CRM_PROPERTIES): FormField | null {
   const p = allProperties.find((x) => x.id === propertyId);
   if (!p) return null;
   return {
@@ -36,12 +36,12 @@ function emptyRowForLibraryElement(kind: string): FormRow {
   }
 }
 
-export function handleDragEnd(event: DragEndEvent, form: Form, actions: StoreActions, customProperties: typeof CRM_PROPERTY_CATALOG) {
+export function handleDragEnd(event: DragEndEvent, form: Form, actions: StoreActions, customProperties: typeof CRM_PROPERTIES) {
   const { active, over } = event;
   if (!over) return;
   const a = active.data.current as DragData | undefined;
   if (!a) return;
-  const allProps = [...CRM_PROPERTY_CATALOG, ...customProperties];
+  const allProps = [...CRM_PROPERTIES, ...customProperties];
 
   // SECTION REORDER via SortableContext.
   // When a section is dragged over another section, dnd-kit's SortableContext

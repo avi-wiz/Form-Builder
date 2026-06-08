@@ -3,7 +3,7 @@ import { DndContext, PointerSensor, useSensor, useSensors, pointerWithin, rectIn
 import { Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useStore, DEFAULT_FORM_STYLE, type FormStyle } from "@/lib/forms-store";
-import { CRM_PROPERTY_CATALOG } from "@/lib/crm-catalog";
+import { CRM_PROPERTIES } from "@/lib/crm-catalog";
 import { TopBar } from "./TopBar";
 import { LeftPanel } from "./LeftPanel";
 import { Canvas } from "./Canvas";
@@ -85,7 +85,7 @@ export function BuilderShell({ formId }: { formId: string }) {
 function DragGhost({ data }: { data: DragData }) {
   let label = "Dragging";
   if (data.source === "libraryProperty") {
-    const p = CRM_PROPERTY_CATALOG.find((x) => x.id === data.propertyId);
+    const p = CRM_PROPERTIES.find((x) => x.id === data.propertyId);
     label = p?.label ?? data.propertyId;
   } else if (data.source === "libraryField") {
     label = data.displayName;

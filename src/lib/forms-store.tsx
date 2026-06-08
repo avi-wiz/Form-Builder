@@ -1,9 +1,11 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
+import type { CrmPropertySeed } from "./crm-catalog";
+export type { CrmPropertySeed };
 
 export type FieldType =
   | "text" | "long_text" | "percentage" | "select" | "multi_select" | "url"
   | "html" | "email" | "number" | "phone" | "checkbox" | "date" | "file"
-  | "currency" | "hidden" | "radio" | "rating" | "consent";
+  | "currency" | "hidden" | "radio" | "rating" | "consent" | "lookup";
 
 export interface FieldOption { label: string; value: string }
 
@@ -178,16 +180,6 @@ export interface CustomerRecord {
   email: string;
   pricelist: string;
   salesRep: string;
-}
-
-export interface CrmPropertySeed {
-  id: string;
-  label: string;
-  objectType: "contact" | "company" | "deal" | "custom";
-  group: string;
-  defaultFieldType: FieldType;
-  commonlyUsed?: boolean;
-  options?: FieldOption[];
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -739,6 +731,7 @@ export const FIELD_TYPE_META: Record<FieldType, { label: string; icon: string }>
   radio: { label: "Radio Button", icon: "Circle" },
   rating: { label: "Rating", icon: "Star" },
   consent: { label: "Consent Checkbox", icon: "ShieldCheck" },
+  lookup: { label: "Lookup", icon: "Search" },
 };
 
 export const newField = (type: FieldType, displayName: string): FormField => ({
