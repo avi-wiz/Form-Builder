@@ -448,13 +448,13 @@ export interface Workflow { id: string; name: string; nodes: WorkflowNode[]; edg
 const SEED_WORKFLOWS: Workflow[] = [
   { id: "w_1", name: "Trade Show Lead Routing",
     nodes: [
-      { id: "n1", type: "entry", label: "Form Submission", x: 40, y: 200, config: { entity: "Forms", formId: "f_trade_show" } },
-      { id: "n2", type: "condition", label: "If Lead Source = 'Trade Show'", x: 300, y: 200, config: { field: "Lead Source", operator: "equals", value: "Trade Show" } },
-      { id: "n3", type: "action", label: "Assign Rep (round-robin)", x: 600, y: 80, config: { assignMode: "round-robin" } },
-      { id: "n4", type: "action", label: "Create Task", x: 860, y: 80 },
-      { id: "n5", type: "action", label: "Send Notification", x: 1120, y: 80 },
-      { id: "n6", type: "action", label: "Create Lead", x: 600, y: 320 },
-      { id: "n7", type: "action", label: "Send Notification", x: 860, y: 320 },
+      { id: "n1", type: "entry", label: "Entry Point", x: 40, y: 200, config: { kind: "entry", entity: "Forms", formId: "f_trade_show" } },
+      { id: "n2", type: "condition", label: "If EIN provided", x: 280, y: 200, config: { kind: "condition", field: "retailer.ein", operator: "not_empty", value: "" } },
+      { id: "n3", type: "action", label: "Create Retailer Account", x: 540, y: 70, config: { kind: "create_retailer_account", defaults: { opening_order_status: "prospect" } } },
+      { id: "n4", type: "action", label: "Assign Sales Rep", x: 800, y: 70, config: { kind: "assign_rep", assignMode: "round-robin" } },
+      { id: "n5", type: "action", label: "Send Notification", x: 1060, y: 70, config: { kind: "send_notification", target: "Assigned rep" } },
+      { id: "n6", type: "action", label: "Create Buyer Contact", x: 540, y: 330, config: { kind: "create_buyer_contact" } },
+      { id: "n7", type: "action", label: "Assign Sales Rep", x: 800, y: 330, config: { kind: "assign_rep", assignMode: "round-robin" } },
     ],
     edges: [
       { from: "n1", to: "n2" },
@@ -463,6 +463,26 @@ const SEED_WORKFLOWS: Workflow[] = [
       { from: "n4", to: "n5" },
       { from: "n2", to: "n6", branch: "false" },
       { from: "n6", to: "n7" },
+    ]},
+  { id: "w_2", name: "RFQ → Quote Routing",
+    nodes: [
+      { id: "n1", type: "entry", label: "Entry Point", x: 40, y: 200, config: { kind: "entry", entity: "Forms", formId: "f_rfq" } },
+      { id: "n2", type: "action", label: "Create Quote", x: 280, y: 200, config: { kind: "create_quote", defaults: { source: "rfq" } } },
+      { id: "n3", type: "condition", label: "If grand_total > $50,000", x: 520, y: 200, config: { kind: "condition", field: "quote.grand_total", operator: "greater_than", value: "50000" } },
+      { id: "n4", type: "action", label: "Assign Sales Rep", x: 780, y: 70, config: { kind: "assign_rep", assignMode: "fixed", rep: "Senior Rep" } },
+      { id: "n5", type: "action", label: "Create Task", x: 1040, y: 70, config: { kind: "create_task", title: "Review high-value quote" } },
+      { id: "n6", type: "action", label: "Send Notification", x: 1300, y: 70, config: { kind: "send_notification", target: "Sales Manager" } },
+      { id: "n7", type: "action", label: "Assign Sales Rep", x: 780, y: 330, config: { kind: "assign_rep", assignMode: "round-robin" } },
+      { id: "n8", type: "action", label: "Send Notification", x: 1040, y: 330, config: { kind: "send_notification", target: "Assigned rep" } },
+    ],
+    edges: [
+      { from: "n1", to: "n2" },
+      { from: "n2", to: "n3" },
+      { from: "n3", to: "n4", branch: "true" },
+      { from: "n4", to: "n5" },
+      { from: "n5", to: "n6" },
+      { from: "n3", to: "n7", branch: "false" },
+      { from: "n7", to: "n8" },
     ]},
 ];
 

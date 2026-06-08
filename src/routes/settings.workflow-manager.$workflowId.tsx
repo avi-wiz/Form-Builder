@@ -1,9 +1,15 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, type DragEvent } from "react";
-import { Zap, GitBranch, Bell, CheckSquare, UserPlus, PlusCircle, Wand2, Database, Mail, ArrowLeft, ClipboardList } from "lucide-react";
+import {
+  Zap, GitBranch, Bell, CheckSquare, UserCheck, ArrowLeft,
+  Building2, User, FileText, ShoppingCart, Repeat, Package, CreditCard,
+  Shield, AlertTriangle, Truck, Ticket, Clock, ToggleRight, ArrowRightCircle,
+  type LucideIcon,
+} from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui-kit";
 import { useStore, type WorkflowNode } from "@/lib/forms-store";
+import { CRM_PROPERTIES } from "@/lib/crm-catalog";
 import { z } from "zod";
 
 export const Route = createFileRoute("/settings/workflow-manager/$workflowId")({
@@ -12,22 +18,96 @@ export const Route = createFileRoute("/settings/workflow-manager/$workflowId")({
   component: WorkflowPage,
 });
 
-type PaletteItem = { id: string; label: string; type: "entry" | "condition" | "action"; Icon: typeof Bell };
+type NodeType = "entry" | "condition" | "action";
+type PaletteItem = { kind: string; label: string; type: NodeType; Icon: LucideIcon };
+type PaletteSection = { title: string; items: PaletteItem[] };
 
-const PALETTE: PaletteItem[] = [
-  { id: "entry", label: "Entry Point", type: "entry", Icon: Zap },
-  { id: "condition", label: "Condition", type: "condition", Icon: GitBranch },
-  { id: "send_notification", label: "Send Notification", type: "action", Icon: Bell },
-  { id: "create_task", label: "Create Task", type: "action", Icon: CheckSquare },
-  { id: "assign_rep", label: "Assign Rep", type: "action", Icon: UserPlus },
-  { id: "create_lead_deal", label: "Create Lead/Deal", type: "action", Icon: PlusCircle },
-  { id: "transform", label: "Transform", type: "action", Icon: Wand2 },
-  { id: "external_api", label: "External API", type: "action", Icon: Database },
-  { id: "send_email", label: "Send Email", type: "action", Icon: Mail },
-  { id: "create_ticket", label: "Create Ticket", type: "action", Icon: ClipboardList },
+const PALETTE_SECTIONS: PaletteSection[] = [
+  {
+    title: "Entity Creation",
+    items: [
+      { kind: "create_retailer_account", label: "Create Retailer Account", type: "action", Icon: Building2 },
+      { kind: "create_buyer_contact", label: "Create Buyer Contact", type: "action", Icon: User },
+      { kind: "create_quote", label: "Create Quote", type: "action", Icon: FileText },
+      { kind: "create_order", label: "Create Order", type: "action", Icon: ShoppingCart },
+      { kind: "create_standing_order", label: "Create Standing Order", type: "action", Icon: Repeat },
+      { kind: "create_sample_request", label: "Create Sample Request", type: "action", Icon: Package },
+      { kind: "create_credit_application", label: "Create Credit Application", type: "action", Icon: CreditCard },
+      { kind: "create_tax_exemption", label: "Create Tax Exemption Certificate", type: "action", Icon: Shield },
+      { kind: "create_claim", label: "Create Claim / RMA", type: "action", Icon: AlertTriangle },
+      { kind: "create_vendor", label: "Create Vendor", type: "action", Icon: Truck },
+      { kind: "create_ticket", label: "Create Ticket", type: "action", Icon: Ticket },
+      { kind: "log_activity", label: "Log Activity", type: "action", Icon: Clock },
+    ],
+  },
+  {
+    title: "Routing / Assignment",
+    items: [
+      { kind: "assign_rep", label: "Assign Sales Rep", type: "action", Icon: UserCheck },
+      { kind: "send_notification", label: "Send Notification", type: "action", Icon: Bell },
+      { kind: "create_task", label: "Create Task", type: "action", Icon: CheckSquare },
+      { kind: "condition", label: "Branch on Condition", type: "condition", Icon: GitBranch },
+    ],
+  },
+  {
+    title: "Status Changes",
+    items: [
+      { kind: "set_retailer_status", label: "Set Retailer Status", type: "action", Icon: ToggleRight },
+      { kind: "set_quote_status", label: "Set Quote Status", type: "action", Icon: ToggleRight },
+      { kind: "set_order_status", label: "Set Order Status", type: "action", Icon: ToggleRight },
+      { kind: "convert_quote_order", label: "Convert Quote → Order", type: "action", Icon: ArrowRightCircle },
+    ],
+  },
 ];
 
-const ICON_MAP: Record<string, typeof Bell> = Object.fromEntries(PALETTE.map((p) => [p.label, p.Icon]));
+// Entry Point lives implicitly on every workflow; expose it as a draggable too.
+const ENTRY_ITEM: PaletteItem = { kind: "entry", label: "Entry Point", type: "entry", Icon: Zap };
+
+const ALL_ITEMS: PaletteItem[] = [ENTRY_ITEM, ...PALETTE_SECTIONS.flatMap((s) => s.items)];
+const ICON_BY_KIND: Record<string, LucideIcon> = Object.fromEntries(ALL_ITEMS.map((i) => [i.kind, i.Icon]));
+
+// Status option values, pulled from the catalog so they stay in sync.
+const optionValues = (id: string): string[] =>
+  CRM_PROPERTIES.find((p) => p.id === id)?.options?.map((o) => o.value) ?? [];
+const RETAILER_STATUSES = optionValues("retailer.opening_order_status");
+const QUOTE_STATUSES = optionValues("quote.status");
+const ORDER_STATUSES = optionValues("order.status");
+
+const STATUS_OPTIONS: Record<string, string[]> = {
+  set_retailer_status: RETAILER_STATUSES,
+  set_quote_status: QUOTE_STATUSES,
+  set_order_status: ORDER_STATUSES,
+};
+
+// Resolve a node's icon + one-line summary from its config.kind.
+function nodeKind(n: WorkflowNode): string {
+  return (n.config as { kind?: string })?.kind ?? (n.type === "entry" ? "entry" : n.type === "condition" ? "condition" : "");
+}
+
+function nodeIcon(n: WorkflowNode): LucideIcon {
+  return ICON_BY_KIND[nodeKind(n)] ?? (n.type === "entry" ? Zap : n.type === "condition" ? GitBranch : Bell);
+}
+
+function nodeSummary(n: WorkflowNode, formName?: string): string {
+  const c = (n.config ?? {}) as Record<string, unknown>;
+  const kind = nodeKind(n);
+  if (kind === "entry") return formName ? `Form: ${formName}` : "Trigger";
+  if (kind === "condition") {
+    const op = String(c.operator ?? "equals").replace(/_/g, " ");
+    return `${c.field ?? "field"} ${op} ${c.value ?? ""}`.trim();
+  }
+  if (kind === "assign_rep") return `Mode: ${c.assignMode ?? "round-robin"}${c.rep ? ` (${c.rep})` : ""}`;
+  if (kind === "send_notification") return c.target ? `To: ${c.target}` : "Notify";
+  if (kind === "create_task") return c.title ? String(c.title) : "New task";
+  if (kind in STATUS_OPTIONS) return c.status ? `→ ${c.status}` : "Set status";
+  if (kind === "convert_quote_order") return "Quote → Order";
+  if (kind.startsWith("create_")) {
+    const defaults = c.defaults as Record<string, string> | undefined;
+    const pairs = defaults ? Object.entries(defaults).map(([k, v]) => `${k.split(".").pop()}=${v}`) : [];
+    return pairs.length ? pairs.join(", ") : "Create record";
+  }
+  return n.label;
+}
 
 function WorkflowPage() {
   const { workflowId } = Route.useParams();
@@ -44,7 +124,7 @@ function WorkflowPage() {
     store.updateWorkflow(wf.id, {
       nodes: wf.nodes.map((n) =>
         n.id === entryNode.id
-          ? { ...n, config: { ...n.config, entity: "Forms", formId: fromFormId } }
+          ? { ...n, config: { ...n.config, kind: "entry", entity: "Forms", formId: fromFormId } }
           : n
       ),
     });
@@ -56,7 +136,7 @@ function WorkflowPage() {
 
   const selected = wf.nodes.find((n) => n.id === selectedId) ?? null;
   const nodeMap = new Map(wf.nodes.map((n) => [n.id, n]));
-  const W = 1300, H = 520;
+  const W = 1500, H = 520;
 
   const onDragStart = (e: DragEvent<HTMLLIElement>, item: PaletteItem) => {
     e.dataTransfer.setData("text/wc-node", JSON.stringify(item));
@@ -76,7 +156,9 @@ function WorkflowPage() {
       type: item.type,
       label: item.label,
       x, y,
-      config: item.type === "entry" ? { entity: "Forms", formId: store.forms[0]?.id } : {},
+      config: item.type === "entry"
+        ? { kind: "entry", entity: "Forms", formId: store.forms[0]?.id }
+        : { kind: item.kind },
     };
     store.updateWorkflow(wf.id, { nodes: [...wf.nodes, newNode] });
     setSelectedId(newNode.id);
@@ -100,19 +182,30 @@ function WorkflowPage() {
   return (
     <AppShell breadcrumb={breadcrumb}>
       <div className="flex h-full">
-        <aside className="w-60 shrink-0 border-r border-border bg-card p-4">
+        <aside className="w-64 shrink-0 overflow-y-auto border-r border-border bg-card p-4">
           <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Drag nodes onto canvas</div>
-          <ul className="space-y-1">
-            {PALETTE.map((p) => {
-              const Icon = p.Icon;
-              return (
-                <li key={p.id} draggable onDragStart={(e) => onDragStart(e, p)}
-                    className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs hover:border-primary hover:bg-primary/5 cursor-grab active:cursor-grabbing">
-                  <Icon className="h-3.5 w-3.5 text-primary" /> {p.label}
-                </li>
-              );
-            })}
+          <ul className="mb-4 space-y-1">
+            <li draggable onDragStart={(e) => onDragStart(e, ENTRY_ITEM)}
+                className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs hover:border-primary hover:bg-primary/5 cursor-grab active:cursor-grabbing">
+              <ENTRY_ITEM.Icon className="h-3.5 w-3.5 text-primary" /> {ENTRY_ITEM.label}
+            </li>
           </ul>
+          {PALETTE_SECTIONS.map((section) => (
+            <div key={section.title} className="mb-4">
+              <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{section.title}</div>
+              <ul className="space-y-1">
+                {section.items.map((p) => {
+                  const Icon = p.Icon;
+                  return (
+                    <li key={p.kind} draggable onDragStart={(e) => onDragStart(e, p)}
+                        className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs hover:border-primary hover:bg-primary/5 cursor-grab active:cursor-grabbing">
+                      <Icon className="h-3.5 w-3.5 shrink-0 text-primary" /> <span className="truncate">{p.label}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
         </aside>
         <div className="min-w-0 flex-1 overflow-auto bg-muted/20 p-6">
           <div className="mb-4 flex items-center gap-3">
@@ -148,16 +241,19 @@ function WorkflowPage() {
               })}
             </svg>
             {wf.nodes.map((n) => {
-              const Icon = ICON_MAP[n.label] ?? (n.type === "entry" ? Zap : n.type === "condition" ? GitBranch : Bell);
+              const Icon = nodeIcon(n);
+              const entryFormName = nodeKind(n) === "entry"
+                ? store.forms.find((f) => f.id === (n.config as { formId?: string })?.formId)?.name
+                : undefined;
               return (
                 <button key={n.id} onClick={() => setSelectedId(n.id)}
                   className={`absolute rounded-lg border-2 bg-card px-3 py-2 text-left text-xs shadow-sm transition-all hover:border-primary ${selectedId === n.id ? "border-primary ring-2 ring-primary/20" : "border-border"}`}
                   style={{ left: n.x, top: n.y, width: 160 }}>
                   <div className="flex items-center gap-1.5 font-semibold">
-                    <Icon className="h-3.5 w-3.5 text-primary" />
-                    <span className="capitalize">{n.type}</span>
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    <span className="truncate">{n.label}</span>
                   </div>
-                  <div className="mt-1 text-foreground line-clamp-2">{n.label}</div>
+                  <div className="mt-1 line-clamp-2 text-[10px] text-muted-foreground">{nodeSummary(n, entryFormName)}</div>
                 </button>
               );
             })}
@@ -197,7 +293,22 @@ function WorkflowPage() {
                 )}
               </div>
             )}
-            {selected.type === "action" && selected.label === "Assign Rep" && (
+            {selected.type === "action" && nodeKind(selected) in STATUS_OPTIONS && (
+              <div className="mt-4 space-y-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-muted-foreground">Set status to</span>
+                  <select
+                    value={(selected.config as Record<string, string>)?.status ?? ""}
+                    onChange={(e) => updateSelectedConfig({ status: e.target.value })}
+                    className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                  >
+                    <option value="">— Select status —</option>
+                    {STATUS_OPTIONS[nodeKind(selected)].map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+              </div>
+            )}
+            {selected.type === "action" && nodeKind(selected) === "assign_rep" && (
               <div className="mt-4 space-y-3">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-muted-foreground">Assignment Mode</span>
@@ -233,7 +344,7 @@ function WorkflowPage() {
                 )}
               </div>
             )}
-            {selected.type === "action" && selected.label !== "Assign Rep" && (
+            {selected.type === "action" && nodeKind(selected) !== "assign_rep" && !(nodeKind(selected) in STATUS_OPTIONS) && (
               <div className="mt-4 text-xs text-muted-foreground">
                 Configure "{selected.label}" when this node fires. (Mock configuration only.)
               </div>
