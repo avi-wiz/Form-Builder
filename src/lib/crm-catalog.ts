@@ -201,6 +201,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "retailer.how_did_you_hear", label: "How Did You Hear", entity: "retailer_account", group: "Identity & Structure", defaultFieldType: "select",
     options: [
       { label: "Trade Show", value: "trade_show" },
+      { label: "Website", value: "website" },
       { label: "Google", value: "google" },
       { label: "Referral", value: "referral" },
       { label: "Social", value: "social" },

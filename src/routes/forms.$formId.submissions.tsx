@@ -89,10 +89,10 @@ function SubmissionsPage() {
         footer={<><Btn variant="outline" onClick={() => setAssocFor(null)}>Cancel</Btn><Btn onClick={() => setAssocFor(null)}>Done</Btn></>}>
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search Leads, Customers, or Deals..." className="w-full rounded-md border border-border px-3 py-2 text-sm mb-3" />
         <div className="space-y-1">
-          {store.customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase())).map((c) => (
+          {store.retailers.filter((c) => c.legal_name.toLowerCase().includes(search.toLowerCase())).map((c) => (
             <button key={c.id} onClick={() => { if (assocFor) store.updateSubmission(assocFor, { associatedRecord: c.id }); setAssocFor(null); }}
               className="flex w-full items-center justify-between rounded-md border border-border p-3 text-left hover:border-primary">
-              <div><Badge tone="info">Customer</Badge><span className="ml-2 text-sm font-medium">{c.name}</span><div className="text-xs text-muted-foreground">{c.email}</div></div>
+              <div><Badge tone="info">Retailer</Badge><span className="ml-2 text-sm font-medium">{c.legal_name}</span><div className="text-xs text-muted-foreground">{c.email}</div></div>
               <Btn size="sm">Associate</Btn>
             </button>
           ))}

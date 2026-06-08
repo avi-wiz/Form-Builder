@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import type { CrmPropertySeed } from "./crm-catalog";
+import type { CrmPropertySeed, CrmAction, EntityType } from "./crm-catalog";
+import { getDefaultMatchKeys } from "./crm-catalog";
 export type { CrmPropertySeed };
 
 export type FieldType =
@@ -75,15 +76,12 @@ export interface AfterSubmission {
   delay: number;
 }
 export interface CRMConfig {
-  action: "none" | "lead" | "deal" | "lead_deal" | "ticket";
+  action: CrmAction;
   fieldMap: Record<string, string>;
-  defaultLeadStatus: string;
-  defaultDealStage?: string;
-  duplicateAction?: "update" | "create_anyway" | "skip";
-  matchByEmail?: boolean;
-  matchByCompany?: boolean;
-  matchByPhone?: boolean;
+  matchKeys: string[];
   matchFoundAction?: "link" | "link_update" | "ignore";
+  defaults: Record<string, string | boolean>;
+  parentEntityRef?: { entity: EntityType; idField: string };
 }
 export interface AutomationConfig {
   sendEmail: boolean;
@@ -173,13 +171,20 @@ export interface Submission {
   associatedRecord?: string;
 }
 
-export interface CustomerRecord {
+export interface RetailerAccount {
   id: string;
-  name: string;
-  code: string;
-  email: string;
-  pricelist: string;
-  salesRep: string;
+  legal_name: string;
+  dba?: string;
+  ein?: string;
+  email?: string;
+  opening_order_status: "prospect" | "opened" | "active" | "dormant_90d" | "dormant_180d" | "lost" | "reactivated";
+  payment_terms?: "COD" | "CIA" | "Net15" | "Net30" | "Net45" | "Net60" | "EOM";
+  credit_limit?: number;
+  primary_rep?: string;
+  rep_group?: string;
+  territory_assigned?: string;
+  pricelist?: string;
+  store_count?: number;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -210,8 +215,56 @@ function migrateSection(s: FormSection): FormSection {
   return { ...rest, rows };
 }
 
+// Maps V1 CRM action strings to V2 wholesale-native actions.
+const ACTION_MIGRATION: Record<string, CrmAction> = {
+  "lead": "create_retailer_account",
+  "deal": "create_order",
+  "lead_deal": "create_order",
+  "ticket": "create_ticket",
+  "none": "none",
+};
+
+const V2_ACTIONS = new Set<CrmAction>([
+  "none", "create_retailer_account", "create_buyer_contact", "create_quote",
+  "create_order", "create_standing_order", "create_sample_request",
+  "create_credit_application", "create_tax_exemption", "create_claim",
+  "create_vendor", "create_ticket", "log_activity",
+]);
+
+// Collected across all migrateForm calls in a tick; warned once.
+const migratedFormIds: string[] = [];
+
+function migrateCrm(formId: string, crm: CRMConfig): CRMConfig {
+  // Already a V2 config — pass through unchanged (idempotent).
+  if (V2_ACTIONS.has(crm.action) && Array.isArray(crm.matchKeys) && crm.defaults) {
+    return crm;
+  }
+  // Legacy V1 config: map the action, discard the old fieldMap, derive match keys.
+  const legacyAction = String((crm as { action: string }).action);
+  const newAction = ACTION_MIGRATION[legacyAction] ?? "none";
+  const defaults: Record<string, string | boolean> =
+    legacyAction === "lead" || legacyAction === "lead_deal"
+      ? { opening_order_status: "prospect" }
+      : {};
+  migratedFormIds.push(formId);
+  return {
+    action: newAction,
+    fieldMap: {},
+    matchKeys: getDefaultMatchKeys(newAction),
+    matchFoundAction: crm.matchFoundAction,
+    defaults,
+  };
+}
+
 function migrateForm(f: Form): Form {
-  return { ...f, sections: f.sections.map(migrateSection) };
+  const migrated = { ...f, sections: f.sections.map(migrateSection), crm: migrateCrm(f.id, f.crm) };
+  if (migratedFormIds.length > 0 && typeof console !== "undefined") {
+    console.warn(
+      `[WizForms migration] Migrated legacy CRM config (old fieldMap discarded) for forms: ${migratedFormIds.join(", ")}`,
+    );
+    migratedFormIds.length = 0;
+  }
+  return migrated;
 }
 
 function defaultBasicDetails(): FormSection {
@@ -261,7 +314,7 @@ function leadCaptureForm(): Form {
       ]),
     ],
     afterSubmit: { mode: "message", message: "Thanks! Your rep will follow up shortly.", redirectUrl: "", delay: 3 },
-    crm: { action: "lead", fieldMap: {}, defaultLeadStatus: "New" },
+    crm: { action: "create_retailer_account", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_retailer_account"), defaults: { opening_order_status: "prospect", how_did_you_hear: "trade_show" } },
     automation: { sendEmail: true, emailTemplate: "Trade Show Follow-Up", notifyTeam: true, notifyTargets: ["John Carmichael"], createTask: true, taskTitle: "Follow up with new trade show lead", taskAssignee: "Auto-assigned rep", taskDue: "+1 day", taskPriority: "High" },
     submissionCount: 47, viewCount: 412,
   };
@@ -284,7 +337,7 @@ const RAW_SEED_FORMS: Form[] = [
       ]),
     ],
     afterSubmit: { mode: "message", message: "Thanks! We'll be in touch within 1 business day.", redirectUrl: "", delay: 3 },
-    crm: { action: "lead", fieldMap: {}, defaultLeadStatus: "New" },
+    crm: { action: "create_retailer_account", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_retailer_account"), defaults: { opening_order_status: "prospect", how_did_you_hear: "website" } },
     automation: { sendEmail: true, emailTemplate: "Thank You", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Medium" },
     submissionCount: 132, viewCount: 1247,
   },
@@ -313,7 +366,7 @@ const RAW_SEED_FORMS: Form[] = [
       ]),
     ],
     afterSubmit: { mode: "message", message: "Quote request received. Our team will respond within 2 business days.", redirectUrl: "", delay: 3 },
-    crm: { action: "lead_deal", fieldMap: {}, defaultLeadStatus: "Prospect" },
+    crm: { action: "create_quote", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_quote"), defaults: { source: "rfq" } },
     automation: { sendEmail: true, emailTemplate: "RFQ Received", notifyTeam: true, notifyTargets: ["Tyler Jones"], createTask: true, taskTitle: "Prepare RFQ response", taskAssignee: "Tyler Jones", taskDue: "+2 days", taskPriority: "High" },
     submissionCount: 23, viewCount: 198,
   },
@@ -325,7 +378,7 @@ const RAW_SEED_FORMS: Form[] = [
     multiStep: false,
     sections: [defaultBasicDetails()],
     afterSubmit: { mode: "message", message: "Application received.", redirectUrl: "", delay: 3 },
-    crm: { action: "none", fieldMap: {}, defaultLeadStatus: "New" },
+    crm: { action: "create_credit_application", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_credit_application"), defaults: {} },
     automation: { sendEmail: false, emailTemplate: "Account Application Received", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Medium" },
     submissionCount: 0, viewCount: 12,
   },
@@ -344,7 +397,7 @@ const RAW_SEED_FORMS: Form[] = [
       ]),
     ],
     afterSubmit: { mode: "message", message: "Thanks for your feedback!", redirectUrl: "", delay: 3 },
-    crm: { action: "none", fieldMap: {}, defaultLeadStatus: "New" },
+    crm: { action: "log_activity", fieldMap: {}, matchKeys: getDefaultMatchKeys("log_activity"), defaults: { activity_type: "post_purchase_survey" } },
     automation: { sendEmail: false, emailTemplate: "General Acknowledgement", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Low" },
     submissionCount: 89, viewCount: 642,
   },
@@ -352,9 +405,24 @@ const RAW_SEED_FORMS: Form[] = [
 
 const SEED_FORMS: Form[] = RAW_SEED_FORMS.map(migrateForm);
 
-const SEED_CUSTOMERS: CustomerRecord[] = [
-  { id: "C_01396", name: "Flash Furnishing", code: "C_01396", email: "abinv@gmail.com", pricelist: "WholeSale Price", salesRep: "Internal" },
-  { id: "C_01200", name: "Madison Creek Furnishings", code: "C_01200", email: "ops@madisoncreek.com", pricelist: "WholeSale Price", salesRep: "John Carmichael" },
+const SEED_RETAILERS: RetailerAccount[] = [
+  {
+    id: "C_01396", legal_name: "Flash Furnishing LLC", dba: "Flash Furnishing", ein: "84-1739204",
+    email: "ap@flashfurnishing.com", opening_order_status: "active",
+    payment_terms: "Net30", credit_limit: 25000, primary_rep: "John Carmichael",
+    rep_group: "Southeast Home Group", territory_assigned: "Southeast", pricelist: "Wholesale", store_count: 3,
+  },
+  {
+    id: "C_01200", legal_name: "Madison Creek Furnishings Inc.", dba: "Madison Creek", ein: "47-2856103",
+    email: "ops@madisoncreek.com", opening_order_status: "active",
+    payment_terms: "Net60", credit_limit: 80000, primary_rep: "John Carmichael",
+    rep_group: "Southeast Home Group", territory_assigned: "Midwest", pricelist: "Preferred", store_count: 12,
+  },
+  {
+    id: "C_01710", legal_name: "Pacific Coast Imports LLC", dba: "Pacific Coast Imports", ein: "91-3048221",
+    email: "marcus@pacificcoast.com", opening_order_status: "prospect",
+    payment_terms: "COD", territory_assigned: "West", pricelist: "Wholesale", store_count: 1,
+  },
 ];
 
 const SEED_SUBMISSIONS: Submission[] = [
@@ -400,7 +468,7 @@ const SEED_WORKFLOWS: Workflow[] = [
 interface StoreCtx {
   forms: Form[];
   submissions: Submission[];
-  customers: CustomerRecord[];
+  retailers: RetailerAccount[];
   workflows: Workflow[];
   customProperties: CrmPropertySeed[];
   getForm: (id: string) => Form | undefined;
@@ -455,7 +523,7 @@ function balanceWidths(row: FormRow): FormRow {
 export function FormsStoreProvider({ children }: { children: ReactNode }) {
   const [forms, setForms] = useState<Form[]>(SEED_FORMS);
   const [submissions, setSubmissions] = useState<Submission[]>(SEED_SUBMISSIONS);
-  const [customers] = useState<CustomerRecord[]>(SEED_CUSTOMERS);
+  const [retailers] = useState<RetailerAccount[]>(SEED_RETAILERS);
   const [workflows, setWorkflows] = useState<Workflow[]>(SEED_WORKFLOWS);
   const [customProperties, setCustomProperties] = useState<CrmPropertySeed[]>([]);
 
@@ -465,7 +533,7 @@ export function FormsStoreProvider({ children }: { children: ReactNode }) {
     setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: f.sections.map((s) => s.id === sectionId ? fn(s) : s), updatedAt: today } : f));
 
   const value: StoreCtx = {
-    forms, submissions, customers, workflows, customProperties,
+    forms, submissions, retailers, workflows, customProperties,
     getForm: (id) => forms.find((f) => f.id === id),
     createForm: () => {
       const base: Form = {
@@ -475,7 +543,7 @@ export function FormsStoreProvider({ children }: { children: ReactNode }) {
         multiStep: false,
         sections: [],
         afterSubmit: { mode: "message", message: "Thank you! Your submission has been received.", redirectUrl: "", delay: 3 },
-        crm: { action: "none", fieldMap: {}, defaultLeadStatus: "New" },
+        crm: { action: "none", fieldMap: {}, matchKeys: [], defaults: {} },
         automation: { sendEmail: false, emailTemplate: "Thank You", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Medium" },
         submissionCount: 0, viewCount: 0,
       };

@@ -13,28 +13,28 @@ export const Route = createFileRoute("/customers/$customerId")({
 function CustomerPage() {
   const { customerId } = Route.useParams();
   const store = useStore();
-  const c = store.customers.find((x) => x.id === customerId) ?? store.customers[0];
+  const c = store.retailers.find((x) => x.id === customerId) ?? store.retailers[0];
   const subs = useMemo(() => store.submissions.filter((s) => s.associatedRecord === c.id), [store.submissions, c.id]);
   const [open, setOpen] = useState<string | null>(null);
   const [tab, setTab] = useState("forms");
 
   return (
-    <AppShell breadcrumb={[{ label: "Dashboard", to: "/forms" }, { label: "Customers" }, { label: c.name }]}>
+    <AppShell breadcrumb={[{ label: "Dashboard", to: "/forms" }, { label: "Retailers" }, { label: c.legal_name }]}>
       <div className="mx-auto max-w-7xl p-6">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-xl font-semibold">{c.name}</h1>
+          <h1 className="text-xl font-semibold">{c.legal_name}</h1>
           <Btn>Create Order</Btn>
         </div>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[280px_1fr]">
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warning/20 text-warning font-semibold">{c.name.slice(0, 2)}</div>
-              <div><div className="font-semibold">{c.name}</div><div className="text-xs text-muted-foreground">{c.code}</div></div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warning/20 text-warning font-semibold">{c.legal_name.slice(0, 2)}</div>
+              <div><div className="font-semibold">{c.legal_name}</div><div className="text-xs text-muted-foreground">{c.id}</div></div>
             </div>
             <div className="mt-4 space-y-2 text-sm">
-              <Row k="Customer ID" v={<span className="flex items-center gap-1">{c.code}<Copy className="h-3 w-3 text-muted-foreground" /></span>} />
+              <Row k="Retailer ID" v={<span className="flex items-center gap-1">{c.id}<Copy className="h-3 w-3 text-muted-foreground" /></span>} />
               <Row k="Pricelist" v={c.pricelist} />
-              <Row k="Sales Rep" v={c.salesRep} />
+              <Row k="Sales Rep" v={c.primary_rep} />
               <Row k="Email ID" v={<span className="flex items-center gap-1"><Mail className="h-3 w-3" />{c.email}</span>} />
             </div>
           </div>
