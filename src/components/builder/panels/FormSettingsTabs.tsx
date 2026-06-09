@@ -9,6 +9,7 @@ import {
   entityForAction, entityBadgeClasses,
   type CrmAction, type CrmPropertySeed,
 } from "@/lib/crm-catalog";
+import { getRecommendation } from "@/lib/kaiActions";
 
 type Tab = "submission" | "automation" | "style" | "settings";
 
@@ -412,36 +413,6 @@ function AdvancedSettings({ form, action, setCrm }: { form: Form; action: CrmAct
       )}
     </section>
   );
-}
-
-// Typical automation per CRM action. "Apply recommended" flips the matching
-// Quick Automation switches. Touchpoint/Campaign Response and other actions get
-// no recommendation (they rarely trigger downstream automation).
-function getRecommendation(action: CrmAction): { text: string; apply: Partial<AutomationConfig> } | null {
-  switch (action) {
-    case "create_retailer_account":
-      return {
-        text: "Notify the assigned rep + Send a welcome email + Create a 'Follow up' task in 7 days.",
-        apply: { notifyRep: true, sendEmail: true, emailTemplate: "Account Application Received", createTask: true, taskTitle: "Follow up", taskDue: "+1 week", taskPriority: "Medium" },
-      };
-    case "create_quote":
-      return {
-        text: "Notify the assigned rep + Send the quote to the buyer + Create a 'Quote sent' touchpoint.",
-        apply: { notifyRep: true, sendEmail: true, emailTemplate: "RFQ Received", createTask: true, taskTitle: "Quote sent", taskDue: "+1 day", taskPriority: "Medium" },
-      };
-    case "create_order":
-      return {
-        text: "Notify the assigned rep + Send order confirmation + Notify fulfillment.",
-        apply: { notifyRep: true, sendEmail: true, emailTemplate: "General Acknowledgement", notifyTeam: true, notifyTargets: ["Admin"] },
-      };
-    case "create_claim":
-      return {
-        text: "Notify the assigned rep + Acknowledge to buyer + Create a 'Review claim' task within 24h.",
-        apply: { notifyRep: true, sendEmail: true, emailTemplate: "General Acknowledgement", createTask: true, taskTitle: "Review claim", taskDue: "+1 day", taskPriority: "High" },
-      };
-    default:
-      return null;
-  }
 }
 
 function AutomationTab({ form, onOpenSubmission }: { form: Form; onOpenSubmission: () => void }) {

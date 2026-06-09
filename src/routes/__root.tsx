@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { FormsStoreProvider } from "../lib/forms-store";
+import { Toaster } from "../components/ui/sonner";
 
 function NotFoundComponent() {
   return (
@@ -115,6 +116,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <FormsStoreProvider>
         <Outlet />
+        <Toaster position="bottom-right" richColors />
       </FormsStoreProvider>
     </QueryClientProvider>
   );

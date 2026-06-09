@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
+import { toast } from "sonner";
 import { ChevronDown, ChevronRight, ChevronUp, Sparkles, Check } from "lucide-react";
 import { useStore, getSectionFields, type Form } from "@/lib/forms-store";
 import { CRM_PROPERTIES, PROPERTY_GROUPS, entityBadgeClasses, type CrmPropertySeed } from "@/lib/crm-catalog";
+import { computeSuggestions, applySuggestion } from "@/lib/kaiActions";
 import type { DragData } from "./types";
 
 export function LeftPanelFields({ form, query }: { form: Form; query: string }) {
@@ -26,48 +28,24 @@ export function LeftPanelFields({ form, query }: { form: Form; query: string }) 
     return arr;
   }, [form]);
 
-  // Wholesale-relevant Kai suggestions. Each rule fires when its `when()`
-  // condition holds; we surface only the first (most relevant) non-dismissed
-  // suggestion. Clicking "Dismiss" hides it and the next applicable one shows.
+  // Prioritized, apply-able Kai suggestions. computeSuggestions ranks all
+  // applicable rules by impact; the user cycles with the pill and applies inline.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [kaiIdx, setKaiIdx] = useState(0);
 
-  const kaiSuggestion = useMemo(() => {
-    const action = form.crm.action;
-    const has = (id: string) => usedPropertyIds.has(id);
-    const hasAnyOf = (prefix: string) => [...usedPropertyIds].some((id) => id.startsWith(prefix));
-    const businessTypeVal = fieldsInForm.find((f) => f.type === "select" && /business type/i.test(f.displayName));
-    // Default value chosen for business_type, if the form pre-sets one.
-    const businessTypeDefault = String(form.crm.defaults["retailer.business_type"] ?? "");
+  const suggestions = useMemo(
+    () => computeSuggestions(form).filter((s) => !dismissed.has(s.id)),
+    [form, dismissed],
+  );
+  const idx = suggestions.length ? kaiIdx % suggestions.length : 0;
+  const current = suggestions[idx] ?? null;
 
-    const rules: { id: string; text: string }[] = [];
-
-    if (has("retailer.legal_name") && has("retailer.ein") && !has("retailer.payment_terms")) {
-      rules.push({ id: "fin-qual", text: "Add Payment Terms and Credit Limit to capture financial qualification upfront." });
-    }
-    if (hasAnyOf("order.") && !has("order.delivery_window")) {
-      rules.push({ id: "delivery", text: "Add Delivery Preferences — retailers often need lift-gate, appointment scheduling, or white-glove delivery." });
-    }
-    if (action === "create_quote" && !has("quote.expiry_date")) {
-      rules.push({ id: "quote-expiry", text: "Add Quote Expiry Date — un-expiring quotes are a common source of pricing disputes." });
-    }
-    if (hasAnyOf("retailer.") && !has("retailer.primary_rep")) {
-      rules.push({ id: "primary-rep", text: "Add Primary Rep assignment so submissions are auto-routed." });
-    }
-    if (action === "create_credit_application" && !hasAnyOf("credit_application.trade_ref_")) {
-      rules.push({ id: "trade-refs", text: "Add 2–3 Trade References — standard for credit vetting." });
-    }
-    if (businessTypeDefault === "interior_designer" || businessTypeDefault === "hospitality"
-        || !!businessTypeVal) {
-      if (!has("retailer.minimum_annual_commitment") || !has("retailer.exclusivity_type")) {
-        rules.push({ id: "specialty", text: "Add Minimum Annual Commitment and Exclusivity Type for specialty accounts." });
-      }
-    }
-    if (action === "create_claim" && !hasAnyOf("claim.claim_line_")) {
-      rules.push({ id: "claim-lines", text: "Add Claim Line Items so buyers can specify each affected SKU with photos." });
-    }
-
-    return rules.find((r) => !dismissed.has(r.id)) ?? null;
-  }, [form.crm.action, form.crm.defaults, usedPropertyIds, fieldsInForm, dismissed]);
+  const onApply = (id: string) => {
+    const msg = applySuggestion(store, form, id);
+    setDismissed((prev) => new Set(prev).add(id));
+    setKaiIdx(0);
+    toast.success("Kai applied a suggestion", { description: msg });
+  };
 
   const q = query.trim().toLowerCase();
   const matches = (p: CrmPropertySeed) => !q || p.label.toLowerCase().includes(q) || p.group.toLowerCase().includes(q);
@@ -88,19 +66,38 @@ export function LeftPanelFields({ form, query }: { form: Form; query: string }) 
         </Section>
       )}
 
-      {/* Kai suggestion banner — one wholesale-relevant tip at a time */}
-      {kaiSuggestion && (
+      {/* Kai suggestions — prioritized, apply-able, cycle through all */}
+      {current && (
         <div className="rounded-md border border-purple-200 bg-purple-50 p-3">
-          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-purple-800">
-            <Sparkles className="h-3.5 w-3.5" /> Kai suggests
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-purple-800">
+              <Sparkles className="h-3.5 w-3.5" /> Kai suggests
+            </div>
+            {suggestions.length > 1 && (
+              <button
+                onClick={() => setKaiIdx((i) => i + 1)}
+                className="rounded-full bg-purple-200/70 px-2 py-0.5 text-[10px] font-semibold text-purple-800 hover:bg-purple-200"
+                title="Cycle suggestions"
+              >
+                ✨ {suggestions.length} suggestions
+              </button>
+            )}
           </div>
-          <p className="text-[11px] leading-relaxed text-purple-700">{kaiSuggestion.text}</p>
-          <button
-            onClick={() => setDismissed((prev) => new Set(prev).add(kaiSuggestion.id))}
-            className="mt-2 text-[11px] font-medium text-purple-700 hover:underline"
-          >
-            Dismiss
-          </button>
+          <p className="text-[11px] leading-relaxed text-purple-700">{current.text}</p>
+          <div className="mt-2 flex items-center gap-3">
+            <button
+              onClick={() => onApply(current.id)}
+              className="rounded-md bg-purple-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-purple-700"
+            >
+              {current.applyLabel}
+            </button>
+            <button
+              onClick={() => { setDismissed((prev) => new Set(prev).add(current.id)); setKaiIdx(0); }}
+              className="text-[11px] font-medium text-purple-700 hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 

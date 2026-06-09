@@ -1,11 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Plus, MoreVertical, FileText, CheckCircle2, BarChart3, Inbox, Copy, Archive, Trash2, Pencil, Eye, ArrowUp, ArrowDown, Share2, Building2, Package, AlertTriangle, ArrowLeft, X, ArrowRight } from "lucide-react";
+import { toast } from "sonner";
+import { Plus, MoreVertical, FileText, CheckCircle2, BarChart3, Inbox, Copy, Archive, Trash2, Pencil, Eye, ArrowUp, ArrowDown, Share2, Building2, Package, AlertTriangle, ArrowLeft, X, ArrowRight, Sparkles, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
-import { Btn, Badge, Modal } from "@/components/ui-kit";
+import { Btn, Badge, Modal, SlideOver } from "@/components/ui-kit";
 import { useStore, type FormStatus, type FormKind } from "@/lib/forms-store";
 import { getActionLabel, type CrmAction } from "@/lib/crm-catalog";
+import { detectHighVolume, bulkPostTradeShowFlow, type BulkOptions, type HighVolume } from "@/lib/kaiActions";
 
 export const Route = createFileRoute("/forms/")({
   head: () => ({ meta: [{ title: "Forms · WizCommerce" }, { name: "description", content: "Manage all forms across your wholesale workspace." }] }),
@@ -26,6 +28,9 @@ function FormsDashboard() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   // Template chooser. `chooser.outcome` of "" means start at Step 1 (outcome list).
   const [chooser, setChooser] = useState<{ open: boolean; outcome: string }>({ open: false, outcome: "" });
+  // Kai post-trade-show prompt (dismissible per session).
+  const [kaiPromptDismissed, setKaiPromptDismissed] = useState(false);
+  const highVol = useMemo(() => detectHighVolume(store), [store]);
 
   const stats = useMemo(() => {
     const f = store.forms;
@@ -84,6 +89,10 @@ function FormsDashboard() {
           <h1 className="text-xl font-semibold text-foreground">Forms</h1>
           <Btn onClick={() => setChooser({ open: true, outcome: "" })}><Plus className="h-4 w-4" />New Form</Btn>
         </div>
+
+        {highVol && !kaiPromptDismissed && (
+          <KaiTradeShowPrompt store={store} highVol={highVol} onDismiss={() => setKaiPromptDismissed(true)} />
+        )}
 
         {suggestions.length > 0 && (
           <div className="rounded-xl border border-border bg-card p-4">
@@ -349,6 +358,87 @@ function NewFormDialog({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+function KaiTradeShowPrompt({ store, highVol, onDismiss }: { store: ReturnType<typeof useStore>; highVol: HighVolume; onDismiss: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [customize, setCustomize] = useState(false);
+  const [opts, setOpts] = useState<Required<BulkOptions>>({ logTouchpoint: true, draftEmail: true, createTask: true, flagHighValue: true });
+
+  const run = (useOpts: BulkOptions) => {
+    setBusy(true);
+    setCustomize(false);
+    // Brief "Setting up…" delay so the proactive action feels real.
+    setTimeout(() => {
+      const res = bulkPostTradeShowFlow(store, highVol.formId, useOpts, highVol.count);
+      setBusy(false);
+      onDismiss();
+      const parts: string[] = [];
+      if (res.touchpoints) parts.push(`${res.touchpoints} touchpoints logged`);
+      if (res.emails) parts.push(`${res.emails} follow-up emails drafted (review in Outbox)`);
+      if (res.tasks) parts.push(`${res.tasks} tasks created`);
+      if (res.flagged) parts.push(`${res.flagged} flagged high-priority`);
+      toast.success("Done.", { description: parts.join(", ") + "." });
+    }, 1200);
+  };
+
+  const ACTIONS = [
+    { key: "logTouchpoint" as const, label: 'Log a "Show booth conversation" touchpoint for each' },
+    { key: "draftEmail" as const, label: "Draft a personalized follow-up email per prospect (you review before sending)" },
+    { key: "createTask" as const, label: "Create a 7-day follow-up task for each, assigned to the capturing rep" },
+    { key: "flagHighValue" as const, label: "Flag any prospects above $200K estimated volume as high-priority" },
+  ];
+
+  return (
+    <div className="rounded-xl border border-purple-200 bg-purple-50 p-4">
+      <div className="flex items-start gap-2">
+        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-purple-700" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-purple-900">
+            Kai noticed: You captured {highVol.count} prospects from “{highVol.formName}” in the last 2 days. Want me to organize the follow-up?
+          </p>
+          <ul className="mt-2 space-y-0.5 text-[12px] text-purple-800">
+            {ACTIONS.map((a) => <li key={a.key} className="flex gap-1.5"><span>▸</span>{a.label}</li>)}
+          </ul>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Btn size="sm" onClick={() => run({ logTouchpoint: true, draftEmail: true, createTask: true, flagHighValue: true })} disabled={busy}>
+              {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Setting up…</> : "Set it all up"}
+            </Btn>
+            <button onClick={() => setCustomize(true)} disabled={busy} className="text-xs font-medium text-purple-700 hover:underline disabled:opacity-50">Customize</button>
+            <button onClick={onDismiss} disabled={busy} className="text-xs font-medium text-purple-700 hover:underline disabled:opacity-50">Not now</button>
+          </div>
+        </div>
+      </div>
+
+      <SlideOver
+        open={customize}
+        onClose={() => setCustomize(false)}
+        title="Customize follow-up"
+        width={460}
+        footer={
+          <div className="flex w-full items-center justify-end gap-3">
+            <button onClick={() => setCustomize(false)} className="text-sm text-muted-foreground hover:underline">Cancel</button>
+            <Btn onClick={() => run(opts)} disabled={!Object.values(opts).some(Boolean)}>Run selected</Btn>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">Applies to all {highVol.count} prospects from “{highVol.formName}”. Toggle the actions you want.</p>
+          {ACTIONS.map((a) => (
+            <label key={a.key} className="flex items-start gap-2 rounded-lg border border-border p-2.5 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-primary"
+                checked={opts[a.key]}
+                onChange={(e) => setOpts((p) => ({ ...p, [a.key]: e.target.checked }))}
+              />
+              <span>{a.label}</span>
+            </label>
+          ))}
+        </div>
+      </SlideOver>
+    </div>
   );
 }
 

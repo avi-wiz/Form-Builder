@@ -162,6 +162,7 @@ export interface Form {
   automation: AutomationConfig;
   submissionCount: number;
   viewCount: number;
+  kaiSetupShown?: boolean; // Kai smart-setup banner already shown for this form
 }
 
 export interface Submission {
@@ -844,7 +845,7 @@ const SEED_WORKFLOWS: Workflow[] = [
     ]},
 ];
 
-interface StoreCtx {
+export interface StoreCtx {
   forms: Form[];
   submissions: Submission[];
   retailers: RetailerAccount[];
