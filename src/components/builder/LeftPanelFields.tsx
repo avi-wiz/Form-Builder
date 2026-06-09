@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { ChevronDown, ChevronRight, Sparkles, Check } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, Sparkles, Check } from "lucide-react";
 import { useStore, getSectionFields, type Form } from "@/lib/forms-store";
 import { CRM_PROPERTIES, PROPERTY_GROUPS, entityBadgeClasses, type CrmPropertySeed } from "@/lib/crm-catalog";
 import type { DragData } from "./types";
@@ -104,20 +104,20 @@ export function LeftPanelFields({ form, query }: { form: Form; query: string }) 
         </div>
       )}
 
-      {/* Createable entities (13) */}
+      {/* Createable entities */}
       <Section title="Createable entities" defaultOpen>
         <div className="space-y-4">
           {PROPERTY_GROUPS.filter((g) => !g.referenceOnly).map((group) => (
-            <EntityBlock key={group.entity} group={group} allProps={allProps} matches={matches} usedPropertyIds={usedPropertyIds} />
+            <EntityBlock key={group.entity} group={group} allProps={allProps} matches={matches} usedPropertyIds={usedPropertyIds} searching={!!q} />
           ))}
         </div>
       </Section>
 
-      {/* Reference-only entities (6) — dimmer, collapsed by default */}
+      {/* Reference-only entities — dimmer, collapsed by default */}
       <Section title="Reference-only entities">
         <div className="space-y-4 opacity-70">
           {PROPERTY_GROUPS.filter((g) => g.referenceOnly).map((group) => (
-            <EntityBlock key={group.entity} group={group} allProps={allProps} matches={matches} usedPropertyIds={usedPropertyIds} />
+            <EntityBlock key={group.entity} group={group} allProps={allProps} matches={matches} usedPropertyIds={usedPropertyIds} searching={!!q} />
           ))}
         </div>
       </Section>
@@ -143,21 +143,30 @@ function EntityBlock({
   allProps,
   matches,
   usedPropertyIds,
+  searching,
 }: {
   group: (typeof PROPERTY_GROUPS)[number];
   allProps: CrmPropertySeed[];
   matches: (p: CrmPropertySeed) => boolean;
   usedPropertyIds: Set<string>;
+  searching: boolean;
 }) {
+  // Per-entity, per-session view mode. Default "recommended" (commonly-used only).
+  const [viewMode, setViewMode] = useState<"recommended" | "all">("recommended");
+
   const entityProps = allProps.filter((p) => p.entity === group.entity && matches(p));
   if (entityProps.length === 0) return null;
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-1.5 px-0.5">
-        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${entityBadgeClasses(group.entity)}`}>
-          {group.label}
-        </span>
-      </div>
+
+  const recommended = entityProps.filter((p) => p.commonlyUsed);
+  // Small entities (≤10 props) and those with no commonly-used flags just show
+  // everything — the toggle adds friction with no payoff. Search also bypasses
+  // the toggle so a query can reach every matching property.
+  const useToggle = !searching && recommended.length > 0 && entityProps.length > 10;
+  const showAll = !useToggle || viewMode === "all";
+  const hiddenCount = entityProps.length - recommended.length;
+
+  const subGroups = (
+    <>
       {group.subGroups.map((sub) => {
         const props = entityProps.filter((p) => p.group === sub);
         if (props.length === 0) return null;
@@ -165,6 +174,35 @@ function EntityBlock({
           <PropertyGroup key={group.entity + ":" + sub} groupName={sub} properties={props} usedIds={usedPropertyIds} />
         );
       })}
+    </>
+  );
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 px-0.5">
+        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${entityBadgeClasses(group.entity)}`}>
+          {group.label}
+        </span>
+      </div>
+
+      {showAll ? (
+        subGroups
+      ) : (
+        <ul className="rounded-md border border-border bg-white p-1.5 space-y-1">
+          {recommended.map((p) => <PropertyItem key={p.id} property={p} inUse={usedPropertyIds.has(p.id)} compact={false} />)}
+        </ul>
+      )}
+
+      {useToggle && (
+        <button
+          onClick={() => setViewMode((m) => (m === "all" ? "recommended" : "all"))}
+          className="flex w-full items-center justify-center gap-0.5 px-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+        >
+          {viewMode === "all"
+            ? <>Show less <ChevronUp className="h-3 w-3" /></>
+            : <>Show all ({hiddenCount} more) <ChevronDown className="h-3 w-3" /></>}
+        </button>
+      )}
     </div>
   );
 }
@@ -182,14 +220,14 @@ function PropertyGroup({ groupName, properties, usedIds }: { groupName: string; 
       </button>
       {open && (
         <ul className="border-t border-border p-1.5 space-y-1">
-          {properties.map((p) => <PropertyItem key={p.id} property={p} inUse={usedIds.has(p.id)} />)}
+          {properties.map((p) => <PropertyItem key={p.id} property={p} inUse={usedIds.has(p.id)} compact />)}
         </ul>
       )}
     </div>
   );
 }
 
-function PropertyItem({ property, inUse }: { property: CrmPropertySeed; inUse: boolean }) {
+function PropertyItem({ property, inUse, compact }: { property: CrmPropertySeed; inUse: boolean; compact?: boolean }) {
   const dragData: DragData = { source: "libraryProperty", propertyId: property.id };
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: "lib-prop-" + property.id,
@@ -201,7 +239,7 @@ function PropertyItem({ property, inUse }: { property: CrmPropertySeed; inUse: b
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`flex items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-xs ${inUse ? "opacity-50" : "cursor-grab hover:border-primary/40 hover:bg-primary/5 active:cursor-grabbing"} ${isDragging ? "opacity-30" : ""}`}
+      className={`flex items-center gap-2 rounded-md border border-transparent px-2 text-xs ${compact ? "py-1.5" : "py-2"} ${inUse ? "opacity-50" : "cursor-grab hover:border-primary/40 hover:bg-primary/5 active:cursor-grabbing"} ${isDragging ? "opacity-30" : ""}`}
     >
       {property.commonlyUsed && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" title="Commonly used" />}
       <span className="flex-1 truncate font-medium text-foreground">{property.label}</span>

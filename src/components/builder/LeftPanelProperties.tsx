@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, X, ChevronDown, ChevronRight, ChevronUp } from "lucide-react";
 import { useStore, FIELD_TYPE_META, type FieldType, type FieldOption } from "@/lib/forms-store";
 import { CRM_PROPERTIES, PROPERTY_GROUPS, entityBadgeClasses, type EntityType, type CrmPropertySeed } from "@/lib/crm-catalog";
 
@@ -54,33 +54,62 @@ function Section({ title, children, defaultOpen }: { title: string; children: Re
   );
 }
 
+function PropertyRow({ p }: { p: CrmPropertySeed }) {
+  return (
+    <li className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/50">
+      {p.commonlyUsed && <span className="h-1.5 w-1.5 rounded-full bg-green-500" />}
+      <span className="flex-1 truncate font-medium">{p.label}</span>
+      {p.helpText && <span className="text-muted-foreground" title={p.helpText}>ℹ️</span>}
+    </li>
+  );
+}
+
 function EntityCard({ group, allProps, q }: { group: (typeof PROPERTY_GROUPS)[number]; allProps: CrmPropertySeed[]; q: string }) {
+  const [viewMode, setViewMode] = useState<"recommended" | "all">("recommended");
   const entityProps = allProps.filter((p) => p.entity === group.entity && (!q || p.label.toLowerCase().includes(q)));
   if (entityProps.length === 0) return null;
+
+  const recommended = entityProps.filter((p) => p.commonlyUsed);
+  const useToggle = !q && recommended.length > 0 && entityProps.length > 10;
+  const showAll = !useToggle || viewMode === "all";
+  const hiddenCount = entityProps.length - recommended.length;
+
   return (
     <div className="rounded-md border border-border bg-white p-2">
       <div className="mb-1.5 flex items-center justify-between">
         <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${entityBadgeClasses(group.entity)}`}>{group.label}</span>
         <span className="text-[11px] font-semibold text-muted-foreground">{entityProps.length}</span>
       </div>
-      {group.subGroups.map((sub) => {
-        const list = entityProps.filter((p) => p.group === sub);
-        if (list.length === 0) return null;
-        return (
-          <div key={sub} className="mt-1">
-            <div className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{sub}</div>
-            <ul className="space-y-1">
-              {list.map((p) => (
-                <li key={p.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/50">
-                  {p.commonlyUsed && <span className="h-1.5 w-1.5 rounded-full bg-green-500" />}
-                  <span className="flex-1 truncate font-medium">{p.label}</span>
-                  {p.helpText && <span className="text-muted-foreground" title={p.helpText}>ℹ️</span>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
+
+      {showAll ? (
+        group.subGroups.map((sub) => {
+          const list = entityProps.filter((p) => p.group === sub);
+          if (list.length === 0) return null;
+          return (
+            <div key={sub} className="mt-1">
+              <div className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{sub}</div>
+              <ul className="space-y-1">
+                {list.map((p) => <PropertyRow key={p.id} p={p} />)}
+              </ul>
+            </div>
+          );
+        })
+      ) : (
+        <ul className="space-y-1">
+          {recommended.map((p) => <PropertyRow key={p.id} p={p} />)}
+        </ul>
+      )}
+
+      {useToggle && (
+        <button
+          onClick={() => setViewMode((m) => (m === "all" ? "recommended" : "all"))}
+          className="mt-1.5 flex w-full items-center justify-center gap-0.5 px-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground"
+        >
+          {viewMode === "all"
+            ? <>Show less <ChevronUp className="h-3 w-3" /></>
+            : <>Show all ({hiddenCount} more) <ChevronDown className="h-3 w-3" /></>}
+        </button>
+      )}
     </div>
   );
 }

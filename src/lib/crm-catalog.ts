@@ -157,8 +157,8 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
 
   // ── Identity & Structure ──────────────────────────────────────────────────
   { id: "retailer.legal_name", label: "Legal Name", entity: "retailer_account", group: "Identity & Structure", defaultFieldType: "text", commonlyUsed: true },
-  { id: "retailer.dba", label: "DBA", entity: "retailer_account", group: "Identity & Structure", defaultFieldType: "text" },
-  { id: "retailer.ein", label: "EIN", entity: "retailer_account", group: "Identity & Structure", defaultFieldType: "text", helpText: "Employer Identification Number — 9-digit federal tax ID" },
+  { id: "retailer.dba", label: "DBA", entity: "retailer_account", group: "Identity & Structure", defaultFieldType: "text", commonlyUsed: true },
+  { id: "retailer.ein", label: "EIN", entity: "retailer_account", group: "Identity & Structure", defaultFieldType: "text", commonlyUsed: true, helpText: "Employer Identification Number — 9-digit federal tax ID" },
   { id: "retailer.parent_account", label: "Parent Account", entity: "retailer_account", group: "Identity & Structure", defaultFieldType: "lookup", lookupEntity: "retailer_account" },
   { id: "retailer.store_count", label: "Store Count", entity: "retailer_account", group: "Identity & Structure", defaultFieldType: "number" },
   { id: "retailer.business_type", label: "Business Type", entity: "retailer_account", group: "Identity & Structure", defaultFieldType: "select",
@@ -235,7 +235,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Net 60", value: "Net60" },
       { label: "EOM", value: "EOM" },
     ]},
-  { id: "retailer.credit_limit", label: "Credit Limit", entity: "retailer_account", group: "Financial State", defaultFieldType: "currency" },
+  { id: "retailer.credit_limit", label: "Credit Limit", entity: "retailer_account", group: "Financial State", defaultFieldType: "currency", commonlyUsed: true },
   { id: "retailer.ar_balance", label: "AR Balance", entity: "retailer_account", group: "Financial State", defaultFieldType: "currency" },
   { id: "retailer.ar_aging_buckets", label: "AR Aging Buckets", entity: "retailer_account", group: "Financial State", defaultFieldType: "text" },
   { id: "retailer.on_credit_hold", label: "On Credit Hold", entity: "retailer_account", group: "Financial State", defaultFieldType: "checkbox" },
@@ -271,7 +271,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "retailer.preferred_carrier", label: "Preferred Carrier", entity: "retailer_account", group: "Logistics", defaultFieldType: "text" },
   { id: "retailer.default_ship_to_street", label: "Default Ship-To Street", entity: "retailer_account", group: "Logistics", defaultFieldType: "text" },
   { id: "retailer.default_ship_to_city", label: "Default Ship-To City", entity: "retailer_account", group: "Logistics", defaultFieldType: "text" },
-  { id: "retailer.default_ship_to_state", label: "Default Ship-To State", entity: "retailer_account", group: "Logistics", defaultFieldType: "text" },
+  { id: "retailer.default_ship_to_state", label: "Default Ship-To State", entity: "retailer_account", group: "Logistics", defaultFieldType: "text", commonlyUsed: true },
   { id: "retailer.default_ship_to_zip", label: "Default Ship-To Zip", entity: "retailer_account", group: "Logistics", defaultFieldType: "text" },
   { id: "retailer.blind_ship_required", label: "Blind Ship Required", entity: "retailer_account", group: "Logistics", defaultFieldType: "checkbox", helpText: "Blind ship = remove supplier branding from packaging; common for drop-ship retailers" },
 
@@ -311,7 +311,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "contact.first_name", label: "First Name", entity: "contact", group: "Personal", defaultFieldType: "text", commonlyUsed: true },
   { id: "contact.last_name", label: "Last Name", entity: "contact", group: "Personal", defaultFieldType: "text", commonlyUsed: true },
   { id: "contact.email", label: "Email", entity: "contact", group: "Personal", defaultFieldType: "email", commonlyUsed: true },
-  { id: "contact.phone", label: "Phone", entity: "contact", group: "Personal", defaultFieldType: "phone" },
+  { id: "contact.phone", label: "Phone", entity: "contact", group: "Personal", defaultFieldType: "phone", commonlyUsed: true },
   { id: "contact.phone_is_shared_line", label: "Phone Is Shared Line", entity: "contact", group: "Personal", defaultFieldType: "checkbox", helpText: "Flag for shared retail store phone — affects call strategy" },
   { id: "contact.mobile_phone", label: "Mobile Phone", entity: "contact", group: "Personal", defaultFieldType: "phone" },
   { id: "contact.title", label: "Title", entity: "contact", group: "Personal", defaultFieldType: "text" },
@@ -365,7 +365,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "contact.last_engaged_date", label: "Last Engaged Date", entity: "contact", group: "Preferences", defaultFieldType: "date" },
 
   // ── Association ───────────────────────────────────────────────────────────
-  { id: "contact.primary_retailer", label: "Retailer", entity: "contact", group: "Association", defaultFieldType: "lookup", lookupEntity: "retailer_account", helpText: "The contact's primary retailer (1:1 default)" },
+  { id: "contact.primary_retailer", label: "Retailer", entity: "contact", group: "Association", defaultFieldType: "lookup", lookupEntity: "retailer_account", commonlyUsed: true, helpText: "The contact's primary retailer (1:1 default)" },
   { id: "contact.also_associated_with", label: "Also Associated With", entity: "contact", group: "Association", defaultFieldType: "multi_select", lookupEntity: "retailer_account", helpText: "For contacts that work across multiple retailers — buying-group consultants, designers serving multiple hospitality chains, etc." },
   { id: "contact.store_location", label: "Store Location", entity: "contact", group: "Association", defaultFieldType: "lookup", lookupEntity: "store_location" },
 
@@ -376,7 +376,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   // ── Header ────────────────────────────────────────────────────────────────
   { id: "quote.quote_number", label: "Quote Number", entity: "quote", group: "Header", defaultFieldType: "text" },
   { id: "quote.title", label: "Title", entity: "quote", group: "Header", defaultFieldType: "text", commonlyUsed: true },
-  { id: "quote.source", label: "Source", entity: "quote", group: "Header", defaultFieldType: "select",
+  { id: "quote.source", label: "Source", entity: "quote", group: "Header", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "RFQ", value: "rfq" },
       { label: "Sample Follow-up", value: "sample_followup" },
@@ -384,7 +384,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Custom Order", value: "custom_order" },
       { label: "Rep Initiated", value: "rep_initiated" },
     ]},
-  { id: "quote.retailer", label: "Retailer", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "retailer_account" },
+  { id: "quote.retailer", label: "Retailer", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "retailer_account", commonlyUsed: true },
   { id: "quote.contact", label: "Contact", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "contact" },
   { id: "quote.rep", label: "Rep", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "sales_rep" },
   { id: "quote.trade_show", label: "Trade Show", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "trade_show" },
@@ -434,7 +434,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   // ── Header ────────────────────────────────────────────────────────────────
   { id: "order.order_number", label: "Order Number", entity: "order", group: "Header", defaultFieldType: "text", commonlyUsed: true },
   { id: "order.po_number", label: "PO Number", entity: "order", group: "Header", defaultFieldType: "text", commonlyUsed: true, helpText: "The retailer's Purchase Order number — not our internal order ID" },
-  { id: "order.order_type", label: "Order Type", entity: "order", group: "Header", defaultFieldType: "select",
+  { id: "order.order_type", label: "Order Type", entity: "order", group: "Header", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "Opening", value: "opening" },
       { label: "Reorder", value: "reorder" },
@@ -461,7 +461,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "order.source_quote_id", label: "Source Quote", entity: "order", group: "Header", defaultFieldType: "lookup", lookupEntity: "quote" },
   { id: "order.source_standing_order_id", label: "Source Standing Order", entity: "order", group: "Header", defaultFieldType: "lookup", lookupEntity: "order", helpText: "The standing-order template (order_type = standing_order_template) this cycle was generated from" },
   { id: "order.order_date", label: "Order Date", entity: "order", group: "Header", defaultFieldType: "date" },
-  { id: "order.requested_ship_date", label: "Requested Ship Date", entity: "order", group: "Header", defaultFieldType: "date" },
+  { id: "order.requested_ship_date", label: "Requested Ship Date", entity: "order", group: "Header", defaultFieldType: "date", commonlyUsed: true },
   { id: "order.cancel_after_date", label: "Cancel After Date", entity: "order", group: "Header", defaultFieldType: "date", helpText: "Retailer instruction: cancel the order if it can't ship by this date" },
   { id: "order.ship_complete", label: "Ship Complete", entity: "order", group: "Header", defaultFieldType: "checkbox" },
   { id: "order.payment_terms_snapshot", label: "Payment Terms Snapshot", entity: "order", group: "Header", defaultFieldType: "select",
@@ -608,7 +608,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   // ════════════════════════════════════════════════════════════════════════
 
   // ── Submission ────────────────────────────────────────────────────────────
-  { id: "credit_application.status", label: "Status", entity: "credit_application", group: "Submission", defaultFieldType: "select",
+  { id: "credit_application.status", label: "Status", entity: "credit_application", group: "Submission", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "Draft", value: "draft" },
       { label: "Submitted", value: "submitted" },
@@ -622,7 +622,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "credit_application.decision_date", label: "Decision Date", entity: "credit_application", group: "Submission", defaultFieldType: "date" },
 
   // ── Requested Terms ───────────────────────────────────────────────────────
-  { id: "credit_application.requested_terms", label: "Requested Terms", entity: "credit_application", group: "Requested Terms", defaultFieldType: "select",
+  { id: "credit_application.requested_terms", label: "Requested Terms", entity: "credit_application", group: "Requested Terms", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "COD", value: "COD" },
       { label: "CIA", value: "CIA" },
@@ -632,18 +632,18 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Net 60", value: "Net60" },
       { label: "EOM", value: "EOM" },
     ]},
-  { id: "credit_application.requested_limit", label: "Requested Limit", entity: "credit_application", group: "Requested Terms", defaultFieldType: "currency" },
+  { id: "credit_application.requested_limit", label: "Requested Limit", entity: "credit_application", group: "Requested Terms", defaultFieldType: "currency", commonlyUsed: true },
   { id: "credit_application.approved_terms", label: "Approved Terms", entity: "credit_application", group: "Requested Terms", defaultFieldType: "text" },
   { id: "credit_application.approved_limit", label: "Approved Limit", entity: "credit_application", group: "Requested Terms", defaultFieldType: "currency" },
 
   // ── Identity & Financial ──────────────────────────────────────────────────
-  { id: "credit_application.ein", label: "EIN", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "text" },
+  { id: "credit_application.ein", label: "EIN", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "text", commonlyUsed: true },
   { id: "credit_application.dnb_score", label: "D&B Score", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "text", helpText: "Dun & Bradstreet credit score" },
   { id: "credit_application.bank_name", label: "Bank Name", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "text" },
   { id: "credit_application.bank_account_masked", label: "Bank Account (Masked)", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "text" },
   { id: "credit_application.bank_contact_name", label: "Bank Contact Name", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "text" },
   { id: "credit_application.bank_contact_phone", label: "Bank Contact Phone", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "phone" },
-  { id: "credit_application.estimated_monthly_volume", label: "Estimated Monthly Volume", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "currency" },
+  { id: "credit_application.estimated_monthly_volume", label: "Estimated Monthly Volume", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "currency", commonlyUsed: true },
   { id: "credit_application.personal_guarantee_offered", label: "Personal Guarantee Offered", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "checkbox" },
   { id: "credit_application.authorized_signatory_name", label: "Authorized Signatory Name", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "text" },
   { id: "credit_application.signature_date", label: "Signature Date", entity: "credit_application", group: "Identity & Financial", defaultFieldType: "date" },
@@ -667,10 +667,10 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
 
   // ── Header ────────────────────────────────────────────────────────────────
   { id: "claim.claim_number", label: "Claim Number", entity: "claim", group: "Header", defaultFieldType: "text" },
-  { id: "claim.retailer", label: "Retailer", entity: "claim", group: "Header", defaultFieldType: "lookup", lookupEntity: "retailer_account" },
-  { id: "claim.source_order", label: "Source Order", entity: "claim", group: "Header", defaultFieldType: "lookup", lookupEntity: "order" },
+  { id: "claim.retailer", label: "Retailer", entity: "claim", group: "Header", defaultFieldType: "lookup", lookupEntity: "retailer_account", commonlyUsed: true },
+  { id: "claim.source_order", label: "Source Order", entity: "claim", group: "Header", defaultFieldType: "lookup", lookupEntity: "order", commonlyUsed: true },
   { id: "claim.source_invoice_number", label: "Source Invoice Number", entity: "claim", group: "Header", defaultFieldType: "text" },
-  { id: "claim.claim_type", label: "Claim Type", entity: "claim", group: "Header", defaultFieldType: "select",
+  { id: "claim.claim_type", label: "Claim Type", entity: "claim", group: "Header", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "Damaged in Transit", value: "damaged_in_transit" },
       { label: "Wrong Item", value: "wrong_item" },
@@ -679,7 +679,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Quality Issue", value: "quality_issue" },
       { label: "Other", value: "other" },
     ]},
-  { id: "claim.preferred_resolution", label: "Preferred Resolution", entity: "claim", group: "Header", defaultFieldType: "select",
+  { id: "claim.preferred_resolution", label: "Preferred Resolution", entity: "claim", group: "Header", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "Replacement", value: "replacement" },
       { label: "Refund", value: "refund" },
@@ -691,7 +691,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Standard", value: "standard" },
       { label: "Urgent", value: "urgent" },
     ]},
-  { id: "claim.status", label: "Status", entity: "claim", group: "Header", defaultFieldType: "select",
+  { id: "claim.status", label: "Status", entity: "claim", group: "Header", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "Submitted", value: "submitted" },
       { label: "Under Review", value: "under_review" },
@@ -754,16 +754,16 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   // ════════════════════════════════════════════════════════════════════════
   // Ticket
   // ════════════════════════════════════════════════════════════════════════
-  { id: "ticket.subject", label: "Subject", entity: "ticket", group: "General", defaultFieldType: "text" },
+  { id: "ticket.subject", label: "Subject", entity: "ticket", group: "General", defaultFieldType: "text", commonlyUsed: true },
   { id: "ticket.description", label: "Description", entity: "ticket", group: "General", defaultFieldType: "long_text" },
-  { id: "ticket.priority", label: "Priority", entity: "ticket", group: "General", defaultFieldType: "select",
+  { id: "ticket.priority", label: "Priority", entity: "ticket", group: "General", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "Low", value: "low" },
       { label: "Medium", value: "medium" },
       { label: "High", value: "high" },
       { label: "Urgent", value: "urgent" },
     ]},
-  { id: "ticket.type", label: "Type", entity: "ticket", group: "General", defaultFieldType: "select",
+  { id: "ticket.type", label: "Type", entity: "ticket", group: "General", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "Chargeback Dispute", value: "chargeback_dispute" },
       { label: "Pricing Dispute", value: "pricing_dispute" },
@@ -771,13 +771,13 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "General", value: "general" },
       { label: "Onboarding Question", value: "onboarding_question" },
     ]},
-  { id: "ticket.related_order", label: "Related Order", entity: "ticket", group: "General", defaultFieldType: "lookup", lookupEntity: "order" },
+  { id: "ticket.related_order", label: "Related Order", entity: "ticket", group: "General", defaultFieldType: "lookup", lookupEntity: "order", commonlyUsed: true },
   { id: "ticket.related_sku", label: "Related SKU", entity: "ticket", group: "General", defaultFieldType: "lookup", lookupEntity: "sku" },
 
   // ════════════════════════════════════════════════════════════════════════
   // Touchpoint (rep-created, relationship-building — split out from Activity)
   // ════════════════════════════════════════════════════════════════════════
-  { id: "touchpoint.type", label: "Type", entity: "touchpoint", group: "General", defaultFieldType: "select",
+  { id: "touchpoint.type", label: "Type", entity: "touchpoint", group: "General", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "Visit", value: "visit" },
       { label: "Call", value: "call" },
@@ -789,7 +789,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "ABR Meeting", value: "abr_meeting" },
       { label: "Line Sheet Sent", value: "line_sheet_sent" },
     ]},
-  { id: "touchpoint.notes", label: "Notes", entity: "touchpoint", group: "General", defaultFieldType: "long_text" },
+  { id: "touchpoint.notes", label: "Notes", entity: "touchpoint", group: "General", defaultFieldType: "long_text", commonlyUsed: true },
   { id: "touchpoint.related_retailer", label: "Related Retailer", entity: "touchpoint", group: "General", defaultFieldType: "lookup", lookupEntity: "retailer_account", commonlyUsed: true },
   { id: "touchpoint.related_contact", label: "Related Contact", entity: "touchpoint", group: "General", defaultFieldType: "lookup", lookupEntity: "contact" },
   { id: "touchpoint.related_quote", label: "Related Quote", entity: "touchpoint", group: "General", defaultFieldType: "lookup", lookupEntity: "quote" },
@@ -797,13 +797,13 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "touchpoint.location", label: "Location", entity: "touchpoint", group: "General", defaultFieldType: "text", helpText: "For in-person events" },
   { id: "touchpoint.duration_minutes", label: "Duration (minutes)", entity: "touchpoint", group: "General", defaultFieldType: "number" },
   { id: "touchpoint.logged_by", label: "Logged By", entity: "touchpoint", group: "General", defaultFieldType: "lookup", lookupEntity: "sales_rep", helpText: "Auto-populated with the rep who logged the touchpoint" },
-  { id: "touchpoint.touchpoint_date", label: "Touchpoint Date", entity: "touchpoint", group: "General", defaultFieldType: "date" },
+  { id: "touchpoint.touchpoint_date", label: "Touchpoint Date", entity: "touchpoint", group: "General", defaultFieldType: "date", commonlyUsed: true },
 
   // ════════════════════════════════════════════════════════════════════════
   // Campaign Response (system-created, marketing-driven — split out from Activity)
   // ════════════════════════════════════════════════════════════════════════
   { id: "campaign_response.campaign_id", label: "Campaign ID", entity: "campaign_response", group: "General", defaultFieldType: "text" },
-  { id: "campaign_response.response_type", label: "Response Type", entity: "campaign_response", group: "General", defaultFieldType: "select",
+  { id: "campaign_response.response_type", label: "Response Type", entity: "campaign_response", group: "General", defaultFieldType: "select", commonlyUsed: true,
     options: [
       { label: "Catalog Drop Sent", value: "catalog_drop_sent" },
       { label: "NPS Survey Sent", value: "nps_survey_sent" },
@@ -814,9 +814,9 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Virtual Showroom Session", value: "virtual_showroom_session" },
     ]},
   { id: "campaign_response.response_data", label: "Response Data", entity: "campaign_response", group: "General", defaultFieldType: "long_text", helpText: "Survey responses, NPS scores, etc." },
-  { id: "campaign_response.related_retailer", label: "Related Retailer", entity: "campaign_response", group: "General", defaultFieldType: "lookup", lookupEntity: "retailer_account" },
+  { id: "campaign_response.related_retailer", label: "Related Retailer", entity: "campaign_response", group: "General", defaultFieldType: "lookup", lookupEntity: "retailer_account", commonlyUsed: true },
   { id: "campaign_response.related_order", label: "Related Order", entity: "campaign_response", group: "General", defaultFieldType: "lookup", lookupEntity: "order" },
-  { id: "campaign_response.response_date", label: "Response Date", entity: "campaign_response", group: "General", defaultFieldType: "date" },
+  { id: "campaign_response.response_date", label: "Response Date", entity: "campaign_response", group: "General", defaultFieldType: "date", commonlyUsed: true },
 
   // ════════════════════════════════════════════════════════════════════════
   // Sales Rep (reference-only)
