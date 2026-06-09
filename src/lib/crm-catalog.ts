@@ -16,21 +16,28 @@ const US_STATES: FieldOption[] = [
   ["WI", "Wisconsin"], ["WY", "Wyoming"],
 ].map(([value, label]) => ({ value, label }));
 
+// Entity-model pruning notes:
+// - Vendor was removed: it is upstream supply-chain — wrong persona for this
+//   product. If procurement onboarding is needed, build a separate Procurement module.
+// - Standing Order and Sample Request were folded into Order (via order_type +
+//   dedicated sub-groups). Tax Exemption Certificate was folded into Retailer
+//   Account as a nested repeatable block.
+// - Trade Show is admin-managed master data (reference-only), still used as a
+//   lookup target by other entities — but not form-creatable.
 export type EntityType =
   | "retailer_account" | "buyer_contact" | "quote" | "order"
-  | "standing_order" | "sample_request" | "credit_application"
-  | "tax_exemption" | "claim" | "vendor" | "trade_show"
+  | "credit_application" | "claim"
   | "ticket" | "activity"
   // Reference-only (no create action; used as lookup targets):
+  | "trade_show"
   | "sales_rep" | "rep_group" | "price_list" | "payment_method"
   | "store_location" | "sku" | "custom";
 
 export type CrmAction =
   | "none"
   | "create_retailer_account" | "create_buyer_contact" | "create_quote"
-  | "create_order" | "create_standing_order" | "create_sample_request"
-  | "create_credit_application" | "create_tax_exemption" | "create_claim"
-  | "create_vendor" | "create_ticket" | "log_activity";
+  | "create_order" | "create_credit_application" | "create_claim"
+  | "create_ticket" | "log_activity";
 
 export interface CrmPropertySeed {
   id: string;                    // e.g. "retailer.ein", "quote.expiry_date"
@@ -51,11 +58,11 @@ export const PROPERTY_GROUPS: {
   subGroups: string[];
   referenceOnly?: boolean;
 }[] = [
-  // ── Createable entities (13) ──────────────────────────────────────────────
+  // ── Createable entities (8) ───────────────────────────────────────────────
   {
     entity: "retailer_account",
     label: "Retailer Account",
-    subGroups: ["Identity & Structure", "Commerce State", "Financial State", "GTM", "Logistics"],
+    subGroups: ["Identity & Structure", "Commerce State", "Financial State", "GTM", "Logistics", "Tax Exemption Certificates"],
   },
   {
     entity: "buyer_contact",
@@ -70,17 +77,7 @@ export const PROPERTY_GROUPS: {
   {
     entity: "order",
     label: "Order",
-    subGroups: ["Header", "Routing", "Delivery Preferences", "Status"],
-  },
-  {
-    entity: "standing_order",
-    label: "Standing Order",
-    subGroups: ["General"],
-  },
-  {
-    entity: "sample_request",
-    label: "Sample Request",
-    subGroups: ["General"],
+    subGroups: ["Header", "Routing", "Delivery Preferences", "Recurring Schedule", "Sample Details", "Status"],
   },
   {
     entity: "credit_application",
@@ -88,24 +85,9 @@ export const PROPERTY_GROUPS: {
     subGroups: ["Submission", "Requested Terms", "Identity & Financial", "Trade References", "Files", "Decision"],
   },
   {
-    entity: "tax_exemption",
-    label: "Tax Exemption Certificate",
-    subGroups: ["General"],
-  },
-  {
     entity: "claim",
     label: "Claim / RMA",
     subGroups: ["Header", "Claim Line Items"],
-  },
-  {
-    entity: "vendor",
-    label: "Vendor",
-    subGroups: ["General"],
-  },
-  {
-    entity: "trade_show",
-    label: "Trade Show",
-    subGroups: ["General"],
   },
   {
     entity: "ticket",
@@ -118,7 +100,13 @@ export const PROPERTY_GROUPS: {
     subGroups: ["General"],
   },
 
-  // ── Reference-only entities (6) ───────────────────────────────────────────
+  // ── Reference-only entities (7) ───────────────────────────────────────────
+  {
+    entity: "trade_show",
+    label: "Trade Show",
+    subGroups: ["General"],
+    referenceOnly: true,
+  },
   {
     entity: "sales_rep",
     label: "Sales Rep",
@@ -282,6 +270,34 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "retailer.default_ship_to_zip", label: "Default Ship-To Zip", entity: "retailer_account", group: "Logistics", defaultFieldType: "text" },
   { id: "retailer.blind_ship_required", label: "Blind Ship Required", entity: "retailer_account", group: "Logistics", defaultFieldType: "checkbox", helpText: "Blind ship = remove supplier branding from packaging; common for drop-ship retailers" },
 
+  // ── Tax Exemption Certificates (1:many nested repeatable block) ────────────
+  // Folded in from the former Tax Exemption Certificate entity. Same repeatable-
+  // block pattern as Credit App trade references and Claim line items: one set of
+  // these fields per certificate. retailer.tax_exempt is auto-derived from active certs.
+  { id: "retailer.tax_cert_state", label: "Tax Cert — State", entity: "retailer_account", group: "Tax Exemption Certificates", defaultFieldType: "select", options: US_STATES, helpText: "Repeatable block — add one set of certificate fields per state" },
+  { id: "retailer.tax_cert_exemption_type", label: "Tax Cert — Exemption Type", entity: "retailer_account", group: "Tax Exemption Certificates", defaultFieldType: "select",
+    helpText: "Repeatable block — add one set of certificate fields per state",
+    options: [
+      { label: "Resale", value: "resale" },
+      { label: "Non-Profit", value: "non_profit" },
+      { label: "Government", value: "government" },
+      { label: "Other", value: "other" },
+    ]},
+  { id: "retailer.tax_cert_certificate_number", label: "Tax Cert — Certificate Number", entity: "retailer_account", group: "Tax Exemption Certificates", defaultFieldType: "text", helpText: "Repeatable block — add one set of certificate fields per state" },
+  { id: "retailer.tax_cert_expiration_date", label: "Tax Cert — Expiration Date", entity: "retailer_account", group: "Tax Exemption Certificates", defaultFieldType: "date", helpText: "Repeatable block — add one set of certificate fields per state" },
+  { id: "retailer.tax_cert_certificate_file", label: "Tax Cert — Certificate File", entity: "retailer_account", group: "Tax Exemption Certificates", defaultFieldType: "file", helpText: "Repeatable block — add one set of certificate fields per state" },
+  { id: "retailer.tax_cert_authorized_signatory", label: "Tax Cert — Authorized Signatory", entity: "retailer_account", group: "Tax Exemption Certificates", defaultFieldType: "text", helpText: "Repeatable block — add one set of certificate fields per state" },
+  { id: "retailer.tax_cert_status", label: "Tax Cert — Status", entity: "retailer_account", group: "Tax Exemption Certificates", defaultFieldType: "select",
+    helpText: "Repeatable block — add one set of certificate fields per state",
+    options: [
+      { label: "Pending", value: "pending" },
+      { label: "Verified", value: "verified" },
+      { label: "Expired", value: "expired" },
+      { label: "Revoked", value: "revoked" },
+    ]},
+  { id: "retailer.tax_cert_verified_by", label: "Tax Cert — Verified By", entity: "retailer_account", group: "Tax Exemption Certificates", defaultFieldType: "text", helpText: "Repeatable block — add one set of certificate fields per state" },
+  { id: "retailer.tax_cert_verified_date", label: "Tax Cert — Verified Date", entity: "retailer_account", group: "Tax Exemption Certificates", defaultFieldType: "date", helpText: "Repeatable block — add one set of certificate fields per state" },
+
   // ════════════════════════════════════════════════════════════════════════
   // Buyer Contact
   // ════════════════════════════════════════════════════════════════════════
@@ -419,8 +435,10 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Fill-In", value: "fill_in" },
       { label: "Show", value: "show" },
       { label: "Drop Ship", value: "drop_ship" },
-      { label: "Sample Charged", value: "sample_charged" },
+      { label: "Sample (Complimentary)", value: "sample_complimentary" },
+      { label: "Sample (Charged)", value: "sample_charged" },
       { label: "Custom Made-to-Order", value: "custom_made_to_order" },
+      { label: "Standing Order Template", value: "standing_order_template" },
       { label: "Standing Order Cycle", value: "standing_order_cycle" },
     ]},
   { id: "order.order_source", label: "Order Source", entity: "order", group: "Header", defaultFieldType: "select",
@@ -435,7 +453,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Standing Order", value: "standing_order" },
     ]},
   { id: "order.source_quote_id", label: "Source Quote", entity: "order", group: "Header", defaultFieldType: "lookup", lookupEntity: "quote" },
-  { id: "order.source_standing_order_id", label: "Source Standing Order", entity: "order", group: "Header", defaultFieldType: "lookup", lookupEntity: "standing_order" },
+  { id: "order.source_standing_order_id", label: "Source Standing Order", entity: "order", group: "Header", defaultFieldType: "lookup", lookupEntity: "order", helpText: "The standing-order template (order_type = standing_order_template) this cycle was generated from" },
   { id: "order.order_date", label: "Order Date", entity: "order", group: "Header", defaultFieldType: "date" },
   { id: "order.requested_ship_date", label: "Requested Ship Date", entity: "order", group: "Header", defaultFieldType: "date" },
   { id: "order.cancel_after_date", label: "Cancel After Date", entity: "order", group: "Header", defaultFieldType: "date", helpText: "Retailer instruction: cancel the order if it can't ship by this date" },
@@ -479,6 +497,85 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "order.receiving_contact_phone", label: "Receiving Contact Phone", entity: "order", group: "Delivery Preferences", defaultFieldType: "phone" },
   { id: "order.delivery_notes", label: "Delivery Notes", entity: "order", group: "Delivery Preferences", defaultFieldType: "long_text" },
 
+  // ── Recurring Schedule (only when order_type = standing_order_template) ─────
+  { id: "order.schedule_frequency", label: "Schedule Frequency", entity: "order", group: "Recurring Schedule", defaultFieldType: "select",
+    helpText: "Only relevant when order_type = Standing Order Template",
+    options: [
+      { label: "Weekly", value: "weekly" },
+      { label: "Biweekly", value: "biweekly" },
+      { label: "Monthly", value: "monthly" },
+      { label: "Quarterly", value: "quarterly" },
+      { label: "Seasonal", value: "seasonal" },
+    ]},
+  { id: "order.schedule_seasonal_months", label: "Schedule Seasonal Months", entity: "order", group: "Recurring Schedule", defaultFieldType: "multi_select",
+    helpText: "Only when frequency = Seasonal",
+    options: [
+      { label: "January", value: "jan" },
+      { label: "February", value: "feb" },
+      { label: "March", value: "mar" },
+      { label: "April", value: "apr" },
+      { label: "May", value: "may" },
+      { label: "June", value: "jun" },
+      { label: "July", value: "jul" },
+      { label: "August", value: "aug" },
+      { label: "September", value: "sep" },
+      { label: "October", value: "oct" },
+      { label: "November", value: "nov" },
+      { label: "December", value: "dec" },
+    ]},
+  { id: "order.schedule_start_date", label: "Schedule Start Date", entity: "order", group: "Recurring Schedule", defaultFieldType: "date" },
+  { id: "order.schedule_end_date", label: "Schedule End Date", entity: "order", group: "Recurring Schedule", defaultFieldType: "date" },
+  { id: "order.schedule_next_run_date", label: "Schedule Next Run Date", entity: "order", group: "Recurring Schedule", defaultFieldType: "date" },
+  { id: "order.schedule_mode", label: "Schedule Mode", entity: "order", group: "Recurring Schedule", defaultFieldType: "select",
+    options: [
+      { label: "Auto-Confirm", value: "auto_confirm" },
+      { label: "Review Before Shipping", value: "review_before_shipping" },
+    ]},
+  { id: "order.schedule_status", label: "Schedule Status", entity: "order", group: "Recurring Schedule", defaultFieldType: "select",
+    options: [
+      { label: "Active", value: "active" },
+      { label: "Paused", value: "paused" },
+      { label: "Ended", value: "ended" },
+    ]},
+  { id: "order.schedule_last_run_order_id", label: "Schedule Last Run Order", entity: "order", group: "Recurring Schedule", defaultFieldType: "lookup", lookupEntity: "order" },
+
+  // ── Sample Details (only when order_type starts with "sample_") ─────────────
+  { id: "order.sample_purpose", label: "Sample Purpose", entity: "order", group: "Sample Details", defaultFieldType: "select",
+    helpText: "Only relevant when order_type = Sample (Complimentary/Charged)",
+    options: [
+      { label: "Evaluation", value: "evaluation" },
+      { label: "Client Presentation", value: "client_presentation" },
+      { label: "Showroom", value: "showroom" },
+      { label: "Quality Check", value: "quality_check" },
+      { label: "Other", value: "other" },
+    ]},
+  { id: "order.sample_expected_order_volume_bucket", label: "Sample Expected Order Volume", entity: "order", group: "Sample Details", defaultFieldType: "select",
+    options: [
+      { label: "Under 50", value: "under_50" },
+      { label: "50–200", value: "50_200" },
+      { label: "200–1000", value: "200_1000" },
+      { label: "Over 1000", value: "over_1000" },
+    ]},
+  { id: "order.sample_willing_to_pay", label: "Sample Willing to Pay", entity: "order", group: "Sample Details", defaultFieldType: "select",
+    options: [
+      { label: "Full Price", value: "full_price" },
+      { label: "Discounted", value: "discounted" },
+      { label: "Complimentary Expected", value: "complimentary_expected" },
+    ]},
+  { id: "order.sample_return_due_date", label: "Sample Return Due Date", entity: "order", group: "Sample Details", defaultFieldType: "date" },
+  { id: "order.sample_status", label: "Sample Status", entity: "order", group: "Sample Details", defaultFieldType: "select",
+    options: [
+      { label: "Requested", value: "requested" },
+      { label: "Approved", value: "approved" },
+      { label: "Shipped", value: "shipped" },
+      { label: "Received", value: "received" },
+      { label: "Converted", value: "converted" },
+      { label: "Returned", value: "returned" },
+      { label: "Unreturned (Invoiced)", value: "unreturned_invoiced" },
+      { label: "Declined", value: "declined" },
+    ]},
+  { id: "order.sample_converted_to_order_id", label: "Sample Converted to Order", entity: "order", group: "Sample Details", defaultFieldType: "lookup", lookupEntity: "order", helpText: "The eventual production order this sample converted into" },
+
   // ── Status ────────────────────────────────────────────────────────────────
   { id: "order.status", label: "Status", entity: "order", group: "Status", defaultFieldType: "select", commonlyUsed: true,
     options: [
@@ -499,100 +596,6 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Returned", value: "returned" },
       { label: "Void", value: "void" },
     ]},
-
-  // ════════════════════════════════════════════════════════════════════════
-  // Standing Order
-  // ════════════════════════════════════════════════════════════════════════
-  { id: "standing_order.name", label: "Name", entity: "standing_order", group: "General", defaultFieldType: "text" },
-  { id: "standing_order.retailer", label: "Retailer", entity: "standing_order", group: "General", defaultFieldType: "lookup", lookupEntity: "retailer_account" },
-  { id: "standing_order.buyer_contact", label: "Buyer Contact", entity: "standing_order", group: "General", defaultFieldType: "lookup", lookupEntity: "buyer_contact" },
-  { id: "standing_order.frequency", label: "Frequency", entity: "standing_order", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "Weekly", value: "weekly" },
-      { label: "Biweekly", value: "biweekly" },
-      { label: "Monthly", value: "monthly" },
-      { label: "Quarterly", value: "quarterly" },
-      { label: "Seasonal", value: "seasonal" },
-    ]},
-  { id: "standing_order.seasonal_months", label: "Seasonal Months", entity: "standing_order", group: "General", defaultFieldType: "multi_select",
-    options: [
-      { label: "January", value: "jan" },
-      { label: "February", value: "feb" },
-      { label: "March", value: "mar" },
-      { label: "April", value: "apr" },
-      { label: "May", value: "may" },
-      { label: "June", value: "jun" },
-      { label: "July", value: "jul" },
-      { label: "August", value: "aug" },
-      { label: "September", value: "sep" },
-      { label: "October", value: "oct" },
-      { label: "November", value: "nov" },
-      { label: "December", value: "dec" },
-    ]},
-  { id: "standing_order.start_date", label: "Start Date", entity: "standing_order", group: "General", defaultFieldType: "date" },
-  { id: "standing_order.end_date", label: "End Date", entity: "standing_order", group: "General", defaultFieldType: "date" },
-  { id: "standing_order.next_run_date", label: "Next Run Date", entity: "standing_order", group: "General", defaultFieldType: "date" },
-  { id: "standing_order.mode", label: "Mode", entity: "standing_order", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "Auto-Confirm", value: "auto_confirm" },
-      { label: "Review Before Shipping", value: "review_before_shipping" },
-    ]},
-  { id: "standing_order.preferred_shipping_method", label: "Preferred Shipping Method", entity: "standing_order", group: "General", defaultFieldType: "text" },
-  { id: "standing_order.payment_method", label: "Payment Method", entity: "standing_order", group: "General", defaultFieldType: "lookup", lookupEntity: "payment_method" },
-  { id: "standing_order.status", label: "Status", entity: "standing_order", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "Active", value: "active" },
-      { label: "Paused", value: "paused" },
-      { label: "Ended", value: "ended" },
-    ]},
-  { id: "standing_order.last_run_date", label: "Last Run Date", entity: "standing_order", group: "General", defaultFieldType: "date" },
-  { id: "standing_order.last_run_order_id", label: "Last Run Order", entity: "standing_order", group: "General", defaultFieldType: "lookup", lookupEntity: "order" },
-
-  // ════════════════════════════════════════════════════════════════════════
-  // Sample Request
-  // ════════════════════════════════════════════════════════════════════════
-  { id: "sample_request.sku", label: "SKU", entity: "sample_request", group: "General", defaultFieldType: "lookup", lookupEntity: "sku" },
-  { id: "sample_request.variant", label: "Variant", entity: "sample_request", group: "General", defaultFieldType: "text" },
-  { id: "sample_request.qty", label: "Qty", entity: "sample_request", group: "General", defaultFieldType: "number" },
-  { id: "sample_request.purpose", label: "Purpose", entity: "sample_request", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "Evaluation", value: "evaluation" },
-      { label: "Client Presentation", value: "client_presentation" },
-      { label: "Showroom", value: "showroom" },
-      { label: "Quality Check", value: "quality_check" },
-      { label: "Other", value: "other" },
-    ]},
-  { id: "sample_request.expected_order_volume_bucket", label: "Expected Order Volume", entity: "sample_request", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "Under 50", value: "under_50" },
-      { label: "50–200", value: "50_200" },
-      { label: "200–1000", value: "200_1000" },
-      { label: "Over 1000", value: "over_1000" },
-    ]},
-  { id: "sample_request.willing_to_pay", label: "Willing to Pay", entity: "sample_request", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "Full Price", value: "full_price" },
-      { label: "Discounted", value: "discounted" },
-      { label: "Complimentary Expected", value: "complimentary_expected" },
-    ]},
-  { id: "sample_request.ship_to", label: "Ship To", entity: "sample_request", group: "General", defaultFieldType: "text" },
-  { id: "sample_request.charge_card_on_file", label: "Charge Card on File", entity: "sample_request", group: "General", defaultFieldType: "checkbox" },
-  { id: "sample_request.shipped_date", label: "Shipped Date", entity: "sample_request", group: "General", defaultFieldType: "date" },
-  { id: "sample_request.follow_up_due_date", label: "Follow-Up Due Date", entity: "sample_request", group: "General", defaultFieldType: "date" },
-  { id: "sample_request.return_due_date", label: "Return Due Date", entity: "sample_request", group: "General", defaultFieldType: "date" },
-  { id: "sample_request.status", label: "Status", entity: "sample_request", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "Requested", value: "requested" },
-      { label: "Approved", value: "approved" },
-      { label: "Shipped", value: "shipped" },
-      { label: "Received", value: "received" },
-      { label: "Converted", value: "converted" },
-      { label: "Returned", value: "returned" },
-      { label: "Unreturned (Invoiced)", value: "unreturned_invoiced" },
-      { label: "Declined", value: "declined" },
-    ]},
-  { id: "sample_request.converted_to_order_id", label: "Converted to Order", entity: "sample_request", group: "General", defaultFieldType: "lookup", lookupEntity: "order" },
-  { id: "sample_request.trade_show", label: "Trade Show", entity: "sample_request", group: "General", defaultFieldType: "lookup", lookupEntity: "trade_show" },
 
   // ════════════════════════════════════════════════════════════════════════
   // Credit Application
@@ -653,32 +656,6 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "credit_application.reason_codes", label: "Reason Codes", entity: "credit_application", group: "Decision", defaultFieldType: "text" },
 
   // ════════════════════════════════════════════════════════════════════════
-  // Tax Exemption Certificate
-  // ════════════════════════════════════════════════════════════════════════
-  { id: "tax_exemption.retailer", label: "Retailer", entity: "tax_exemption", group: "General", defaultFieldType: "lookup", lookupEntity: "retailer_account" },
-  { id: "tax_exemption.exemption_type", label: "Exemption Type", entity: "tax_exemption", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "Resale", value: "resale" },
-      { label: "Non-Profit", value: "non_profit" },
-      { label: "Government", value: "government" },
-      { label: "Other", value: "other" },
-    ]},
-  { id: "tax_exemption.state", label: "State", entity: "tax_exemption", group: "General", defaultFieldType: "select", options: US_STATES },
-  { id: "tax_exemption.certificate_number", label: "Certificate Number", entity: "tax_exemption", group: "General", defaultFieldType: "text" },
-  { id: "tax_exemption.expiration_date", label: "Expiration Date", entity: "tax_exemption", group: "General", defaultFieldType: "date" },
-  { id: "tax_exemption.certificate_file", label: "Certificate File", entity: "tax_exemption", group: "General", defaultFieldType: "file" },
-  { id: "tax_exemption.authorized_signatory", label: "Authorized Signatory", entity: "tax_exemption", group: "General", defaultFieldType: "text" },
-  { id: "tax_exemption.status", label: "Status", entity: "tax_exemption", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "Pending", value: "pending" },
-      { label: "Verified", value: "verified" },
-      { label: "Expired", value: "expired" },
-      { label: "Revoked", value: "revoked" },
-    ]},
-  { id: "tax_exemption.verified_by", label: "Verified By", entity: "tax_exemption", group: "General", defaultFieldType: "text" },
-  { id: "tax_exemption.verified_date", label: "Verified Date", entity: "tax_exemption", group: "General", defaultFieldType: "date" },
-
-  // ════════════════════════════════════════════════════════════════════════
   // Claim / RMA
   // ════════════════════════════════════════════════════════════════════════
 
@@ -731,71 +708,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "claim.claim_line_resolution_applied", label: "Claim Line Resolution Applied", entity: "claim", group: "Claim Line Items", defaultFieldType: "text", helpText: "Repeatable block — add one set of claim line fields per affected item" },
 
   // ════════════════════════════════════════════════════════════════════════
-  // Vendor
-  // ════════════════════════════════════════════════════════════════════════
-  { id: "vendor.legal_name", label: "Legal Name", entity: "vendor", group: "General", defaultFieldType: "text" },
-  { id: "vendor.dba", label: "DBA", entity: "vendor", group: "General", defaultFieldType: "text" },
-  { id: "vendor.ein", label: "EIN", entity: "vendor", group: "General", defaultFieldType: "text" },
-  { id: "vendor.contact_name", label: "Contact Name", entity: "vendor", group: "General", defaultFieldType: "text" },
-  { id: "vendor.email", label: "Email", entity: "vendor", group: "General", defaultFieldType: "email" },
-  { id: "vendor.phone", label: "Phone", entity: "vendor", group: "General", defaultFieldType: "phone" },
-  { id: "vendor.website", label: "Website", entity: "vendor", group: "General", defaultFieldType: "url" },
-  { id: "vendor.w9_file", label: "W-9 File", entity: "vendor", group: "General", defaultFieldType: "file" },
-  { id: "vendor.insurance_cert_file", label: "Insurance Cert File", entity: "vendor", group: "General", defaultFieldType: "file" },
-  { id: "vendor.insurance_expiry", label: "Insurance Expiry", entity: "vendor", group: "General", defaultFieldType: "date" },
-  { id: "vendor.bank_name", label: "Bank Name", entity: "vendor", group: "General", defaultFieldType: "text" },
-  { id: "vendor.bank_account_masked", label: "Bank Account (Masked)", entity: "vendor", group: "General", defaultFieldType: "text" },
-  { id: "vendor.bank_routing", label: "Bank Routing", entity: "vendor", group: "General", defaultFieldType: "text" },
-  { id: "vendor.payment_terms_requested", label: "Payment Terms Requested", entity: "vendor", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "COD", value: "COD" },
-      { label: "CIA", value: "CIA" },
-      { label: "Net 15", value: "Net15" },
-      { label: "Net 30", value: "Net30" },
-      { label: "Net 45", value: "Net45" },
-      { label: "Net 60", value: "Net60" },
-      { label: "EOM", value: "EOM" },
-    ]},
-  { id: "vendor.product_categories", label: "Product Categories", entity: "vendor", group: "General", defaultFieldType: "multi_select",
-    options: [
-      { label: "Lighting", value: "lighting" },
-      { label: "Furniture", value: "furniture" },
-      { label: "Home Decor", value: "home_decor" },
-      { label: "Textiles", value: "textiles" },
-      { label: "Rugs", value: "rugs" },
-      { label: "Outdoor", value: "outdoor" },
-      { label: "Gift", value: "gift" },
-    ]},
-  { id: "vendor.moq_policy", label: "MOQ Policy", entity: "vendor", group: "General", defaultFieldType: "text" },
-  { id: "vendor.lead_time", label: "Lead Time", entity: "vendor", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "1–3 days", value: "1_3d" },
-      { label: "3–7 days", value: "3_7d" },
-      { label: "7–14 days", value: "7_14d" },
-      { label: "14+ days", value: "14d_plus" },
-    ]},
-  { id: "vendor.returns_policy", label: "Returns Policy", entity: "vendor", group: "General", defaultFieldType: "long_text" },
-  { id: "vendor.compliance_certifications", label: "Compliance Certifications", entity: "vendor", group: "General", defaultFieldType: "multi_select",
-    options: [
-      { label: "FDA", value: "FDA" },
-      { label: "UL", value: "UL" },
-      { label: "CE", value: "CE" },
-      { label: "ISO 9001", value: "ISO_9001" },
-      { label: "Fair Trade", value: "fair_trade" },
-      { label: "Organic", value: "organic" },
-      { label: "Other", value: "other" },
-    ]},
-  { id: "vendor.status", label: "Status", entity: "vendor", group: "General", defaultFieldType: "select",
-    options: [
-      { label: "Onboarding", value: "onboarding" },
-      { label: "Active", value: "active" },
-      { label: "Suspended", value: "suspended" },
-      { label: "Terminated", value: "terminated" },
-    ]},
-  { id: "vendor.onboarded_date", label: "Onboarded Date", entity: "vendor", group: "General", defaultFieldType: "date" },
-
-  // ════════════════════════════════════════════════════════════════════════
-  // Trade Show
+  // Trade Show (reference-only — admin-managed master data, not form-creatable)
   // ════════════════════════════════════════════════════════════════════════
   { id: "trade_show.show_name", label: "Show Name", entity: "trade_show", group: "General", defaultFieldType: "select",
     options: [
@@ -1042,12 +955,8 @@ const ACTION_TO_ENTITY: Record<Exclude<CrmAction, "none">, EntityType> = {
   create_buyer_contact: "buyer_contact",
   create_quote: "quote",
   create_order: "order",
-  create_standing_order: "standing_order",
-  create_sample_request: "sample_request",
   create_credit_application: "credit_application",
-  create_tax_exemption: "tax_exemption",
   create_claim: "claim",
-  create_vendor: "vendor",
   create_ticket: "ticket",
   log_activity: "activity",
 };
@@ -1067,15 +976,11 @@ export function getActionLabel(action: CrmAction): string {
 }
 
 // Duplicate-matching keys per createable entity. Entities not listed here
-// NEVER match — they always create a new record (Quote, Order, Sample Request,
-// Claim, Ticket).
+// NEVER match — they always create a new record (Quote, Order, Claim, Ticket).
 const MATCH_KEYS: Partial<Record<EntityType, string[]>> = {
   retailer_account: ["retailer.ein", "retailer.legal_name"],
   buyer_contact: ["buyer.email", "buyer.phone"],
-  vendor: ["vendor.ein"],
-  standing_order: ["standing_order.retailer", "standing_order.name"],
   credit_application: ["credit_application.ein", "credit_application.status"],
-  tax_exemption: ["tax_exemption.retailer", "tax_exemption.state"],
 };
 
 export function getDefaultMatchKeys(action: CrmAction): string[] {
@@ -1096,7 +1001,6 @@ const LOOKUP_PLACEHOLDERS: Partial<Record<EntityType, string[]>> = {
   sku: ["SKU-001 — Modern Pendant", "SKU-002 — Oak Dining Table", "SKU-003 — Linen Throw"],
   quote: ["Q-1042", "Q-1043", "Q-1051"],
   order: ["SO-5001", "SO-5002", "SO-5010"],
-  standing_order: ["Weekly Linens", "Monthly Lighting", "Seasonal Decor"],
   trade_show: ["Atlanta Market", "Las Vegas Market", "High Point Market"],
 };
 
@@ -1111,11 +1015,7 @@ export function entityBadgeClasses(entity: EntityType): string {
     case "order":            return "bg-purple-100 text-purple-700";
     case "claim":            return "bg-red-100 text-red-700";
     case "buyer_contact":    return "bg-sky-100 text-sky-700";
-    case "standing_order":   return "bg-indigo-100 text-indigo-700";
-    case "sample_request":   return "bg-amber-100 text-amber-700";
     case "credit_application": return "bg-orange-100 text-orange-700";
-    case "tax_exemption":    return "bg-teal-100 text-teal-700";
-    case "vendor":           return "bg-fuchsia-100 text-fuchsia-700";
     case "trade_show":       return "bg-pink-100 text-pink-700";
     case "ticket":           return "bg-rose-100 text-rose-700";
     case "activity":         return "bg-slate-100 text-slate-700";

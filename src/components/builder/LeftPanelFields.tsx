@@ -26,19 +26,48 @@ export function LeftPanelFields({ form, query }: { form: Form; query: string }) 
     return arr;
   }, [form]);
 
-  // Kai suggestion: if buyer email + retailer legal name are in the form but
-  // business type isn't, suggest the common retailer-profile fields.
-  const kaiSuggestions = useMemo(() => {
-    const hasEmail = usedPropertyIds.has("buyer.email") || fieldsInForm.some((f) => f.type === "email" || /email/i.test(f.displayName));
-    const hasRetailer = usedPropertyIds.has("retailer.legal_name") || fieldsInForm.some((f) => /legal name|company name|business name/i.test(f.displayName));
-    const hasBusinessType = usedPropertyIds.has("retailer.business_type") || fieldsInForm.some((f) => /business type/i.test(f.displayName));
-    if (hasEmail && hasRetailer && !hasBusinessType) {
-      return ["retailer.business_type", "retailer.categories_carried", "retailer.website"]
-        .map((id) => allProps.find((p) => p.id === id))
-        .filter((x): x is CrmPropertySeed => !!x);
+  // Wholesale-relevant Kai suggestions. Each rule fires when its `when()`
+  // condition holds; we surface only the first (most relevant) non-dismissed
+  // suggestion. Clicking "Dismiss" hides it and the next applicable one shows.
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+
+  const kaiSuggestion = useMemo(() => {
+    const action = form.crm.action;
+    const has = (id: string) => usedPropertyIds.has(id);
+    const hasAnyOf = (prefix: string) => [...usedPropertyIds].some((id) => id.startsWith(prefix));
+    const businessTypeVal = fieldsInForm.find((f) => f.type === "select" && /business type/i.test(f.displayName));
+    // Default value chosen for business_type, if the form pre-sets one.
+    const businessTypeDefault = String(form.crm.defaults["retailer.business_type"] ?? "");
+
+    const rules: { id: string; text: string }[] = [];
+
+    if (has("retailer.legal_name") && has("retailer.ein") && !has("retailer.payment_terms")) {
+      rules.push({ id: "fin-qual", text: "Add Payment Terms and Credit Limit to capture financial qualification upfront." });
     }
-    return [];
-  }, [usedPropertyIds, fieldsInForm, allProps]);
+    if (hasAnyOf("order.") && !has("order.delivery_window")) {
+      rules.push({ id: "delivery", text: "Add Delivery Preferences — retailers often need lift-gate, appointment scheduling, or white-glove delivery." });
+    }
+    if (action === "create_quote" && !has("quote.expiry_date")) {
+      rules.push({ id: "quote-expiry", text: "Add Quote Expiry Date — un-expiring quotes are a common source of pricing disputes." });
+    }
+    if (hasAnyOf("retailer.") && !has("retailer.primary_rep")) {
+      rules.push({ id: "primary-rep", text: "Add Primary Rep assignment so submissions are auto-routed." });
+    }
+    if (action === "create_credit_application" && !hasAnyOf("credit_application.trade_ref_")) {
+      rules.push({ id: "trade-refs", text: "Add 2–3 Trade References — standard for credit vetting." });
+    }
+    if (businessTypeDefault === "interior_designer" || businessTypeDefault === "hospitality"
+        || !!businessTypeVal) {
+      if (!has("retailer.minimum_annual_commitment") || !has("retailer.exclusivity_type")) {
+        rules.push({ id: "specialty", text: "Add Minimum Annual Commitment and Exclusivity Type for specialty accounts." });
+      }
+    }
+    if (action === "create_claim" && !hasAnyOf("claim.claim_line_")) {
+      rules.push({ id: "claim-lines", text: "Add Claim Line Items so buyers can specify each affected SKU with photos." });
+    }
+
+    return rules.find((r) => !dismissed.has(r.id)) ?? null;
+  }, [form.crm.action, form.crm.defaults, usedPropertyIds, fieldsInForm, dismissed]);
 
   const q = query.trim().toLowerCase();
   const matches = (p: CrmPropertySeed) => !q || p.label.toLowerCase().includes(q) || p.group.toLowerCase().includes(q);
@@ -59,18 +88,19 @@ export function LeftPanelFields({ form, query }: { form: Form; query: string }) 
         </Section>
       )}
 
-      {/* Kai suggestion banner */}
-      {kaiSuggestions.length > 0 && (
+      {/* Kai suggestion banner — one wholesale-relevant tip at a time */}
+      {kaiSuggestion && (
         <div className="rounded-md border border-purple-200 bg-purple-50 p-3">
-          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-purple-800">
+          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-purple-800">
             <Sparkles className="h-3.5 w-3.5" /> Kai suggests
           </div>
-          <p className="mb-2 text-[11px] text-purple-700">Forms like yours often include:</p>
-          <div className="flex flex-wrap gap-1.5">
-            {kaiSuggestions.map((p) => (
-              <KaiSuggestionChip key={p.id} property={p} />
-            ))}
-          </div>
+          <p className="text-[11px] leading-relaxed text-purple-700">{kaiSuggestion.text}</p>
+          <button
+            onClick={() => setDismissed((prev) => new Set(prev).add(kaiSuggestion.id))}
+            className="mt-2 text-[11px] font-medium text-purple-700 hover:underline"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -181,17 +211,3 @@ function PropertyItem({ property, inUse }: { property: CrmPropertySeed; inUse: b
   );
 }
 
-function KaiSuggestionChip({ property }: { property: CrmPropertySeed }) {
-  const dragData: DragData = { source: "libraryProperty", propertyId: property.id };
-  const { attributes, listeners, setNodeRef } = useDraggable({ id: "kai-" + property.id, data: dragData });
-  return (
-    <button
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      className="cursor-grab rounded-full border border-purple-300 bg-white px-2 py-1 text-[11px] font-medium text-purple-700 hover:bg-purple-100 active:cursor-grabbing"
-    >
-      + {property.label}
-    </button>
-  );
-}

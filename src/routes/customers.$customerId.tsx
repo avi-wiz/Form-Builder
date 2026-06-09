@@ -6,7 +6,7 @@ import { Btn, Badge } from "@/components/ui-kit";
 import { useStore } from "@/lib/forms-store";
 
 export const Route = createFileRoute("/customers/$customerId")({
-  head: () => ({ meta: [{ title: "Customer" }] }),
+  head: () => ({ meta: [{ title: "Retailer" }] }),
   component: CustomerPage,
 });
 
@@ -40,7 +40,7 @@ function CustomerPage() {
           </div>
           <div>
             <div className="flex gap-4 border-b border-border text-sm">
-              {[["sales", "Sales"], ["deals", "Deals"], ["activity", "Activity"], ["notes", "Notes"], ["forms", "Form Submissions"]].map(([k, l]) => (
+              {[["sales", "Sales"], ["orders", "Orders"], ["activity", "Activity"], ["notes", "Notes"], ["forms", "Form Submissions"]].map(([k, l]) => (
                 <button key={k} onClick={() => setTab(k)} className={`pb-2 ${tab === k ? "border-b-2 border-primary text-primary" : "text-muted-foreground"}`}>{l}</button>
               ))}
             </div>

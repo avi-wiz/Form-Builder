@@ -4,6 +4,7 @@ import { Plus, MoreVertical, FileText, CheckCircle2, BarChart3, Inbox, Copy, Arc
 import { AppShell } from "@/components/layout/AppShell";
 import { Btn, Badge, Modal } from "@/components/ui-kit";
 import { useStore, type FormStatus, type FormKind } from "@/lib/forms-store";
+import { getActionLabel } from "@/lib/crm-catalog";
 
 export const Route = createFileRoute("/forms/")({
   head: () => ({ meta: [{ title: "Forms · WizCommerce" }, { name: "description", content: "Manage all forms across your wholesale workspace." }] }),
@@ -88,6 +89,7 @@ function FormsDashboard() {
                 <SortHeader label="Form Name" sortKey="name" sort={sort} onSort={setSort} />
                 <th className="px-5 py-3 text-left font-medium">Status</th>
                 <th className="px-5 py-3 text-left font-medium">Type</th>
+                <th className="px-5 py-3 text-left font-medium">CRM Action</th>
                 <SortHeader label="Submissions (30d)" sortKey="submissionCount" sort={sort} onSort={setSort} align="right" />
                 <SortHeader label="Created" sortKey="createdAt" sort={sort} onSort={setSort} />
                 <SortHeader label="Last Updated" sortKey="updatedAt" sort={sort} onSort={setSort} />
@@ -102,6 +104,7 @@ function FormsDashboard() {
                   </td>
                   <td className="px-5 py-3"><Badge tone={STATUS_TONE[f.status]}>{f.status[0].toUpperCase() + f.status.slice(1)}</Badge></td>
                   <td className="px-5 py-3 text-muted-foreground">{f.kind}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{getActionLabel(f.crm.action)}</td>
                   <td className="px-5 py-3 text-right tabular-nums">{f.submissionCount}</td>
                   <td className="px-5 py-3 text-muted-foreground">{f.createdAt}</td>
                   <td className="px-5 py-3 text-muted-foreground">{f.updatedAt}</td>
@@ -124,7 +127,7 @@ function FormsDashboard() {
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={7} className="px-5 py-12 text-center text-muted-foreground">No forms match the filters.</td></tr>
+                <tr><td colSpan={8} className="px-5 py-12 text-center text-muted-foreground">No forms match the filters.</td></tr>
               )}
             </tbody>
           </table>

@@ -2,8 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, type DragEvent } from "react";
 import {
   Zap, GitBranch, Bell, CheckSquare, UserCheck, ArrowLeft,
-  Building2, User, FileText, ShoppingCart, Repeat, Package, CreditCard,
-  Shield, AlertTriangle, Truck, Ticket, Clock, ToggleRight, ArrowRightCircle,
+  Building2, User, FileText, ShoppingCart, CreditCard,
+  AlertTriangle, Ticket, Clock, ToggleRight, ArrowRightCircle,
   type LucideIcon,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
@@ -30,12 +30,8 @@ const PALETTE_SECTIONS: PaletteSection[] = [
       { kind: "create_buyer_contact", label: "Create Buyer Contact", type: "action", Icon: User },
       { kind: "create_quote", label: "Create Quote", type: "action", Icon: FileText },
       { kind: "create_order", label: "Create Order", type: "action", Icon: ShoppingCart },
-      { kind: "create_standing_order", label: "Create Standing Order", type: "action", Icon: Repeat },
-      { kind: "create_sample_request", label: "Create Sample Request", type: "action", Icon: Package },
       { kind: "create_credit_application", label: "Create Credit Application", type: "action", Icon: CreditCard },
-      { kind: "create_tax_exemption", label: "Create Tax Exemption Certificate", type: "action", Icon: Shield },
       { kind: "create_claim", label: "Create Claim / RMA", type: "action", Icon: AlertTriangle },
-      { kind: "create_vendor", label: "Create Vendor", type: "action", Icon: Truck },
       { kind: "create_ticket", label: "Create Ticket", type: "action", Icon: Ticket },
       { kind: "log_activity", label: "Log Activity", type: "action", Icon: Clock },
     ],
@@ -353,16 +349,12 @@ function WorkflowPage() {
               <div className="mt-4 space-y-3">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-muted-foreground">Field</span>
-                  <select
-                    value={(selected.config as Record<string, string>)?.field ?? "Lead Source"}
+                  <input
+                    value={(selected.config as Record<string, string>)?.field ?? ""}
                     onChange={(e) => updateSelectedConfig({ field: e.target.value })}
-                    className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
-                  >
-                    <option>Lead Source</option>
-                    <option>Interest Area</option>
-                    <option>Company Name</option>
-                    <option>Follow-Up Preference</option>
-                  </select>
+                    placeholder="e.g. retailer.ein, quote.grand_total"
+                    className="w-full rounded-md border border-border px-2 py-1.5 font-mono text-xs focus:border-primary focus:outline-none"
+                  />
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-muted-foreground">Operator</span>
@@ -374,13 +366,15 @@ function WorkflowPage() {
                     <option value="equals">equals</option>
                     <option value="not_equals">not equals</option>
                     <option value="contains">contains</option>
+                    <option value="greater_than">greater than</option>
                     <option value="is_empty">is empty</option>
+                    <option value="not_empty">is not empty</option>
                   </select>
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-muted-foreground">Value</span>
                   <input
-                    value={(selected.config as Record<string, string>)?.value ?? "Trade Show"}
+                    value={(selected.config as Record<string, string>)?.value ?? ""}
                     onChange={(e) => updateSelectedConfig({ value: e.target.value })}
                     className="w-full rounded-md border border-border px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
                     placeholder="Enter value…"

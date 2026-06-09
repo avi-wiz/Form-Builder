@@ -175,8 +175,8 @@ export function FormRenderer({ form, onSubmit, standalone = false, prepopulatedV
   };
 
   const dedupMatches = [
-    { type: "Customer", name: "Madison Creek Furnishings", email: "ops@madisoncreek.com", similarity: 94, initials: "MC" },
-    { type: "Lead", name: "Madison Creek Designs", email: "hello@madisoncreek-designs.com", similarity: 87, initials: "MC" },
+    { type: "Active", name: "Madison Creek Furnishings", email: "ops@madisoncreek.com", similarity: 94, initials: "MC" },
+    { type: "Prospect", name: "Madison Creek Designs", email: "hello@madisoncreek-designs.com", similarity: 87, initials: "MC" },
   ];
 
   return (
@@ -358,7 +358,7 @@ function KaiDedupModal({ open, matches, onDiscard, onCreate }: {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm font-medium">{m.name}</span>
-                <Badge tone={m.type === "Customer" ? "info" : "primary"}>{m.type}</Badge>
+                <Badge tone={m.type === "Active" ? "info" : "primary"}>Retailer · {m.type}</Badge>
               </div>
               <div className="truncate text-xs text-muted-foreground">{m.email}</div>
             </div>

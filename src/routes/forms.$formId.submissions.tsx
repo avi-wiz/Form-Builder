@@ -87,7 +87,7 @@ function SubmissionsPage() {
       </div>
       <Modal open={!!assocFor} onClose={() => setAssocFor(null)} title="Associate to Record"
         footer={<><Btn variant="outline" onClick={() => setAssocFor(null)}>Cancel</Btn><Btn onClick={() => setAssocFor(null)}>Done</Btn></>}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search Leads, Customers, or Deals..." className="w-full rounded-md border border-border px-3 py-2 text-sm mb-3" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search Retailers…" className="w-full rounded-md border border-border px-3 py-2 text-sm mb-3" />
         <div className="space-y-1">
           {store.retailers.filter((c) => c.legal_name.toLowerCase().includes(search.toLowerCase())).map((c) => (
             <button key={c.id} onClick={() => { if (assocFor) store.updateSubmission(assocFor, { associatedRecord: c.id }); setAssocFor(null); }}

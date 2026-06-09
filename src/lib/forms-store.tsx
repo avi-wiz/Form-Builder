@@ -227,9 +227,8 @@ const ACTION_MIGRATION: Record<string, CrmAction> = {
 
 const V2_ACTIONS = new Set<CrmAction>([
   "none", "create_retailer_account", "create_buyer_contact", "create_quote",
-  "create_order", "create_standing_order", "create_sample_request",
-  "create_credit_application", "create_tax_exemption", "create_claim",
-  "create_vendor", "create_ticket", "log_activity",
+  "create_order", "create_credit_application", "create_claim",
+  "create_ticket", "log_activity",
 ]);
 
 // Collected across all migrateForm calls in a tick; warned once.
@@ -447,25 +446,26 @@ const RAW_SEED_FORMS: Form[] = [
     createdAt: "2026-06-09", updatedAt: "2026-06-09",
     multiStep: false,
     sections: [
+      // Sample Request folded into Order (order_type = sample_complimentary).
       seedSection("Product Details", [
-        pf("sample_request.sku", { required: true }),
-        pf("sample_request.variant"),
-        pf("sample_request.qty", { required: true }),
+        ff("SKU", "lookup", { lookupEntity: "sku", required: true }),
+        ff("Variant", "text"),
+        ff("Quantity", "number", { required: true }),
       ], { quickAdd: true }),
       seedSection("Request Details", [
-        pf("sample_request.purpose"),
-        pf("sample_request.expected_order_volume_bucket"),
-        pf("sample_request.willing_to_pay"),
-        pf("sample_request.ship_to", { required: true }),
-        pf("sample_request.return_due_date"),
+        pf("order.sample_purpose"),
+        pf("order.sample_expected_order_volume_bucket"),
+        pf("order.sample_willing_to_pay"),
+        ff("Ship To", "text", { required: true }),
+        pf("order.sample_return_due_date"),
       ]),
       seedSection("Additional", [
         ff("Notes", "long_text", { placeholder: "Anything else we should know?" }),
-        pf("sample_request.trade_show"),
+        ff("Trade Show", "lookup", { lookupEntity: "trade_show" }),
       ]),
     ],
     afterSubmit: { mode: "message", message: "Sample request received. We'll ship shortly.", redirectUrl: "", delay: 3 },
-    crm: { action: "create_sample_request", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_sample_request"), defaults: { status: "requested" } },
+    crm: { action: "create_order", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_order"), defaults: { order_type: "sample_complimentary", sample_status: "requested" } },
     automation: { sendEmail: true, emailTemplate: "Thank You", notifyTeam: true, notifyTargets: ["Auto-assigned rep"], createTask: true, taskTitle: "Ship sample & schedule follow-up", taskAssignee: "Auto-assigned rep", taskDue: "+1 day", taskPriority: "Medium" },
     submissionCount: 0, viewCount: 0,
   },
@@ -511,17 +511,19 @@ const RAW_SEED_FORMS: Form[] = [
     createdAt: "2026-06-09", updatedAt: "2026-06-09",
     multiStep: false,
     sections: [
+      // Tax Exemption Certificate folded into Retailer Account as a nested
+      // repeatable block (retailer.tax_cert_*).
       seedSection("Certificate Details", [
-        pf("tax_exemption.exemption_type", { required: true }),
-        pf("tax_exemption.state", { required: true }),
-        pf("tax_exemption.certificate_number", { required: true }),
-        pf("tax_exemption.expiration_date"),
-        pf("tax_exemption.certificate_file", { required: true }),
-        pf("tax_exemption.authorized_signatory"),
+        pf("retailer.tax_cert_exemption_type", { required: true }),
+        pf("retailer.tax_cert_state", { required: true }),
+        pf("retailer.tax_cert_certificate_number", { required: true }),
+        pf("retailer.tax_cert_expiration_date"),
+        pf("retailer.tax_cert_certificate_file", { required: true }),
+        pf("retailer.tax_cert_authorized_signatory"),
       ], { quickAdd: true }),
     ],
     afterSubmit: { mode: "message", message: "Certificate received. We'll verify it shortly.", redirectUrl: "", delay: 3 },
-    crm: { action: "create_tax_exemption", fieldMap: {}, matchKeys: ["tax_exemption.retailer", "tax_exemption.state"], defaults: { status: "pending" } },
+    crm: { action: "create_retailer_account", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_retailer_account"), defaults: { tax_cert_status: "pending" } },
     automation: { sendEmail: false, emailTemplate: "Thank You", notifyTeam: true, notifyTargets: ["Admin"], createTask: true, taskTitle: "Verify tax exemption certificate", taskAssignee: "Admin", taskDue: "+2 days", taskPriority: "Medium" },
     submissionCount: 0, viewCount: 0,
   },
@@ -561,15 +563,17 @@ const RAW_SEED_FORMS: Form[] = [
     createdAt: "2026-06-09", updatedAt: "2026-06-09",
     multiStep: true,
     sections: [
+      // Standing Order folded into Order (order_type = standing_order_template,
+      // Recurring Schedule sub-group).
       seedSection("Schedule", [
-        pf("standing_order.name", { required: true }),
-        pf("standing_order.frequency", { required: true }),
-        pf("standing_order.seasonal_months", {
-          conditions: { logic: "AND", rules: [{ fieldId: "standing_order.frequency", operator: "equals", value: "seasonal" }] },
+        ff("Template Name", "text", { required: true }),
+        pf("order.schedule_frequency", { required: true }),
+        pf("order.schedule_seasonal_months", {
+          conditions: { logic: "AND", rules: [{ fieldId: "order.schedule_frequency", operator: "equals", value: "seasonal" }] },
         }),
-        pf("standing_order.start_date", { required: true }),
-        pf("standing_order.end_date"),
-        pf("standing_order.mode"),
+        pf("order.schedule_start_date", { required: true }),
+        pf("order.schedule_end_date"),
+        pf("order.schedule_mode"),
       ], { quickAdd: true }),
       // Repeatable block — one SKU + qty line per product.
       seedSection("Products", [
@@ -577,12 +581,12 @@ const RAW_SEED_FORMS: Form[] = [
         ff("Quantity", "number"),
       ]),
       seedSection("Payment & Shipping", [
-        pf("standing_order.payment_method"),
-        pf("standing_order.preferred_shipping_method"),
+        pf("order.payment_method"),
+        ff("Preferred Shipping Method", "text"),
       ]),
     ],
     afterSubmit: { mode: "message", message: "Standing order configured. First run will be reviewed before shipping.", redirectUrl: "", delay: 3 },
-    crm: { action: "create_standing_order", fieldMap: {}, matchKeys: ["standing_order.retailer", "standing_order.name"], defaults: { status: "active", mode: "review_before_shipping" } },
+    crm: { action: "create_order", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_order"), defaults: { order_type: "standing_order_template", schedule_status: "active", schedule_mode: "review_before_shipping" } },
     automation: { sendEmail: true, emailTemplate: "Thank You", notifyTeam: true, notifyTargets: ["Auto-assigned rep"], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Medium" },
     submissionCount: 0, viewCount: 0,
   },
@@ -630,31 +634,33 @@ const RAW_SEED_FORMS: Form[] = [
     createdAt: "2026-06-09", updatedAt: "2026-06-09",
     multiStep: true,
     sections: [
+      // Vendor entity removed (upstream supply-chain — wrong persona). This form
+      // is now a CRM-less intake; a future Procurement module would own it.
       seedSection("Business Details", [
-        pf("vendor.legal_name", { required: true }),
-        pf("vendor.dba"),
-        pf("vendor.ein", { required: true }),
-        pf("vendor.contact_name", { required: true }),
-        pf("vendor.email", { required: true }),
-        pf("vendor.phone"),
-        pf("vendor.website"),
+        ff("Legal Name", "text", { required: true }),
+        ff("DBA", "text"),
+        ff("EIN", "text", { required: true }),
+        ff("Contact Name", "text", { required: true }),
+        ff("Email", "email", { required: true }),
+        ff("Phone", "phone"),
+        ff("Website", "url"),
       ], { quickAdd: true }),
       seedSection("Compliance", [
-        pf("vendor.w9_file", { required: true }),
-        pf("vendor.insurance_cert_file"),
-        pf("vendor.insurance_expiry"),
-        pf("vendor.compliance_certifications"),
+        ff("W-9 File", "file", { required: true }),
+        ff("Insurance Cert File", "file"),
+        ff("Insurance Expiry", "date"),
+        ff("Compliance Certifications", "text"),
       ]),
       seedSection("Terms", [
-        pf("vendor.payment_terms_requested"),
-        pf("vendor.product_categories"),
-        pf("vendor.moq_policy"),
-        pf("vendor.lead_time"),
-        pf("vendor.returns_policy"),
+        ff("Payment Terms Requested", "text"),
+        ff("Product Categories", "text"),
+        ff("MOQ Policy", "text"),
+        ff("Lead Time", "text"),
+        ff("Returns Policy", "long_text"),
       ]),
     ],
     afterSubmit: { mode: "message", message: "Vendor application received. We'll begin onboarding.", redirectUrl: "", delay: 3 },
-    crm: { action: "create_vendor", fieldMap: {}, matchKeys: ["vendor.ein"], defaults: { status: "onboarding" } },
+    crm: { action: "none", fieldMap: {}, matchKeys: [], defaults: {} },
     automation: { sendEmail: true, emailTemplate: "Account Application Received", notifyTeam: true, notifyTargets: ["Admin"], createTask: true, taskTitle: "Onboard new vendor", taskAssignee: "Admin", taskDue: "+1 week", taskPriority: "Medium" },
     submissionCount: 0, viewCount: 0,
   },

@@ -28,17 +28,20 @@ export function FieldConfigPanel({ form, sectionId, field, allFields, onDelete }
   return (
     <div className="space-y-3">
       {field.propertyId && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] text-blue-800">
+        <div className="flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] text-blue-800">
           {linkedProp ? (
-            <>Linked to <span className="font-semibold">{getEntityLabel(linkedProp.entity)} → {linkedProp.label}</span></>
+            <span>Linked to <span className="font-semibold">{getEntityLabel(linkedProp.entity)} → {linkedProp.label}</span></span>
           ) : (
-            <>Linked to property: <span className="font-mono">{field.propertyId}</span></>
+            <span>Linked to property: <span className="font-mono">{field.propertyId}</span></span>
+          )}
+          {linkedProp?.helpText && (
+            <span title={linkedProp.helpText} className="shrink-0 cursor-help text-blue-500"><Info className="h-3 w-3" /></span>
           )}
         </div>
       )}
 
       <Collapsible title="Field Settings" defaultOpen>
-        <Labeled label="Display Name" info={linkedProp?.helpText}>
+        <Labeled label="Display Name">
           <input value={field.displayName} onChange={(e) => update({ displayName: e.target.value })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm focus:border-primary focus:outline-none" />
         </Labeled>
         <Labeled label="Type">

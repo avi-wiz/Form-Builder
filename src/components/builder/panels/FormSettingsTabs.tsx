@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Sparkles, Settings, Palette, Shield, Star } from "lucide-react";
+import { Sparkles, Settings, Palette, Shield, Star, Info } from "lucide-react";
 import { Toggle } from "@/components/ui-kit";
 import { useStore, getSectionFields, DEFAULT_FORM_STYLE, DEFAULT_GOVERNANCE, type Form, type FormStyle, type FormGovernance, type RoleName, type RolePermissions } from "@/lib/forms-store";
 import {
@@ -151,7 +151,7 @@ function findProp(id: string): CrmPropertySeed | undefined {
 }
 
 // Only shown for entities that have match keys. Always-create entities
-// (quote, order, sample_request, claim, ticket) get no defaults → hidden.
+// (quote, order, claim, ticket) get no defaults → hidden.
 function RecordMatchingSection({ form, action, setCrm }: { form: Form; action: CrmAction; setCrm: SetCrm }) {
   const defaultKeys = getDefaultMatchKeys(action);
   if (defaultKeys.length === 0) return null;
@@ -270,6 +270,7 @@ function FieldMappingSection({ form, entity, setCrm }: { form: Form; entity: Non
               <span className="flex items-center gap-1 text-[11px] font-medium truncate">
                 {p.commonlyUsed && <Star className="h-2.5 w-2.5 shrink-0 fill-green-500 text-green-500" />}
                 <span className={p.commonlyUsed ? "font-semibold" : ""}>{p.label}</span>
+                {p.helpText && <span title={p.helpText} className="shrink-0 cursor-help text-muted-foreground/70"><Info className="h-2.5 w-2.5" /></span>}
               </span>
               <span className="flex items-center gap-1 text-[9px] text-muted-foreground">
                 {p.group}
@@ -347,7 +348,7 @@ function AutomationTab({ form }: { form: Form }) {
       {form.automation.notifyRep && (
         <div className="mb-1 pl-2 border-l-2 border-primary/30">
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            The Sales Rep assigned to the Lead/Customer (via auto-assign or existing record) will receive an email notification with the submitted form data.
+            The Sales Rep assigned to the Retailer Account (via auto-assign or existing record) will receive an email notification with the submitted form data.
           </p>
         </div>
       )}
