@@ -95,6 +95,9 @@ export interface AutomationConfig {
   taskAssignee: string;
   taskDue: string;
   taskPriority: string;
+  autoAssign?: boolean;
+  assignMode?: "round_robin" | "territory" | "fixed";
+  assignFixedRep?: string;
   kaiDedup?: boolean;
 }
 
@@ -186,6 +189,41 @@ export interface RetailerAccount {
   territory_assigned?: string;
   pricelist?: string;
   store_count?: number;
+}
+
+export interface Touchpoint {
+  id: string;
+  retailerId: string;
+  type: "visit" | "call" | "email" | "meeting" | "note";
+  notes: string;
+  date: string;          // yyyy-mm-dd
+  relatedQuoteId?: string;
+  relatedOrderId?: string;
+  createdAt: string;     // ISO timestamp, for ordering the timeline
+  loggedBy?: string;
+}
+
+// Automatic system event logged when a retailer's opening_order_status changes.
+// Rendered inline in the touchpoint timeline, but visually distinct.
+export interface StatusEvent {
+  id: string;
+  retailerId: string;
+  from: RetailerAccount["opening_order_status"];
+  to: RetailerAccount["opening_order_status"];
+  triggeredBy: string;   // e.g. "Order #1234"
+  date: string;          // yyyy-mm-dd
+  createdAt: string;     // ISO timestamp
+}
+
+// System-created marketing/campaign event (catalog drops, surveys, NPS, etc.).
+export interface CampaignResponse {
+  id: string;
+  retailerId: string;
+  responseType: string;  // matches campaign_response.response_type catalog values
+  responseData?: string; // survey text, NPS score, etc.
+  campaignId?: string;
+  date: string;          // yyyy-mm-dd
+  createdAt: string;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -728,6 +766,24 @@ const SEED_RETAILERS: RetailerAccount[] = [
   },
 ];
 
+const SEED_TOUCHPOINTS: Touchpoint[] = [
+  { id: "T_001", retailerId: "C_01396", type: "call", notes: "Reviewed Q3 reorder plan — interested in the new lighting line.", date: "2026-05-30", createdAt: "2026-05-30T15:20:00Z", loggedBy: "John Carmichael" },
+  { id: "T_002", retailerId: "C_01396", type: "visit", notes: "Showroom walkthrough at their flagship store.", date: "2026-05-12", createdAt: "2026-05-12T18:00:00Z", loggedBy: "John Carmichael" },
+  { id: "T_003", retailerId: "C_01200", type: "meeting", notes: "Annual business review — set FY27 commitment target.", date: "2026-05-22", createdAt: "2026-05-22T17:10:00Z", loggedBy: "John Carmichael" },
+];
+
+const SEED_STATUS_EVENTS: StatusEvent[] = [
+  // The "active" retailers each opened with a first order — log the transition.
+  { id: "SE_001", retailerId: "C_01396", from: "prospect", to: "opened", triggeredBy: "Order #1234", date: "2026-03-15", createdAt: "2026-03-15T16:00:00Z" },
+  { id: "SE_002", retailerId: "C_01200", from: "prospect", to: "opened", triggeredBy: "Order #1102", date: "2026-02-02", createdAt: "2026-02-02T14:30:00Z" },
+];
+
+const SEED_CAMPAIGN_RESPONSES: CampaignResponse[] = [
+  { id: "CR_001", retailerId: "C_01396", responseType: "catalog_drop_sent", campaignId: "SPRING26", date: "2026-04-01", createdAt: "2026-04-01T09:00:00Z" },
+  { id: "CR_002", retailerId: "C_01396", responseType: "nps_response_received", responseData: "NPS score: 9 — “Great selection, fast shipping.”", campaignId: "NPS-Q1", date: "2026-04-20", createdAt: "2026-04-20T11:15:00Z" },
+  { id: "CR_003", retailerId: "C_01200", responseType: "post_purchase_survey_sent", campaignId: "PPS-MAY", date: "2026-05-18", createdAt: "2026-05-18T08:00:00Z" },
+];
+
 const SEED_SUBMISSIONS: Submission[] = [
   { id: "S_1001", formId: "f_contact", submitterName: "Sarah Mills", submitterEmail: "sarah@brightdecor.com", status: "new", submittedAt: "2026-06-01T14:34:00Z", values: { "Company name": "Bright Decor LLC", "Email ID": "sarah@brightdecor.com", "Subject": "Bulk pricing question", "Message": "I'd like to learn about bulk pricing for our spring catalog." }, associatedRecord: "C_01396" },
   { id: "S_1002", formId: "f_trade_show", submitterName: "Marcus Lin", submitterEmail: "marcus@pacificcoast.com", status: "actioned", submittedAt: "2026-05-28T10:15:00Z", values: { "Company name": "Pacific Coast Imports", "Email ID": "marcus@pacificcoast.com", "Trade Show": "Atlanta Market", "Product Interest": "Lighting" }, associatedRecord: "C_01396" },
@@ -792,6 +848,9 @@ interface StoreCtx {
   forms: Form[];
   submissions: Submission[];
   retailers: RetailerAccount[];
+  touchpoints: Touchpoint[];
+  statusEvents: StatusEvent[];
+  campaignResponses: CampaignResponse[];
   workflows: Workflow[];
   customProperties: CrmPropertySeed[];
   getForm: (id: string) => Form | undefined;
@@ -821,7 +880,12 @@ interface StoreCtx {
   addCustomProperty: (prop: CrmPropertySeed) => void;
   addSubmission: (s: Submission) => void;
   updateSubmission: (id: string, patch: Partial<Submission>) => void;
+  addTouchpoint: (t: Touchpoint) => void;
   updateWorkflow: (id: string, patch: Partial<Workflow>) => void;
+  // Returns the workflow whose entry node is triggered by this form, if any.
+  getWorkflowForForm: (formId: string) => Workflow | undefined;
+  // Find-or-create the form's workflow (entry node references the form).
+  ensureWorkflowForForm: (formId: string, formName: string) => Workflow;
 }
 
 const Ctx = createContext<StoreCtx | null>(null);
@@ -847,6 +911,9 @@ export function FormsStoreProvider({ children }: { children: ReactNode }) {
   const [forms, setForms] = useState<Form[]>(SEED_FORMS);
   const [submissions, setSubmissions] = useState<Submission[]>(SEED_SUBMISSIONS);
   const [retailers] = useState<RetailerAccount[]>(SEED_RETAILERS);
+  const [touchpoints, setTouchpoints] = useState<Touchpoint[]>(SEED_TOUCHPOINTS);
+  const [statusEvents] = useState<StatusEvent[]>(SEED_STATUS_EVENTS);
+  const [campaignResponses] = useState<CampaignResponse[]>(SEED_CAMPAIGN_RESPONSES);
   const [workflows, setWorkflows] = useState<Workflow[]>(SEED_WORKFLOWS);
   const [customProperties, setCustomProperties] = useState<CrmPropertySeed[]>([]);
 
@@ -856,7 +923,7 @@ export function FormsStoreProvider({ children }: { children: ReactNode }) {
     setForms((p) => p.map((f) => f.id === formId ? { ...f, sections: f.sections.map((s) => s.id === sectionId ? fn(s) : s), updatedAt: today } : f));
 
   const value: StoreCtx = {
-    forms, submissions, retailers, workflows, customProperties,
+    forms, submissions, retailers, touchpoints, statusEvents, campaignResponses, workflows, customProperties,
     getForm: (id) => forms.find((f) => f.id === id),
     createForm: () => {
       const base: Form = {
@@ -1091,7 +1158,22 @@ export function FormsStoreProvider({ children }: { children: ReactNode }) {
       setForms((p) => p.map((f) => f.id === s.formId ? { ...f, submissionCount: f.submissionCount + 1 } : f));
     },
     updateSubmission: (id, patch) => setSubmissions((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s)),
+    addTouchpoint: (t) => setTouchpoints((p) => [t, ...p]),
     updateWorkflow: (id, patch) => setWorkflows((p) => p.map((w) => w.id === id ? { ...w, ...patch } : w)),
+    getWorkflowForForm: (formId) =>
+      workflows.find((w) => w.nodes.some((n) => n.type === "entry" && (n.config as { formId?: string } | undefined)?.formId === formId)),
+    ensureWorkflowForForm: (formId, formName) => {
+      const existing = workflows.find((w) => w.nodes.some((n) => n.type === "entry" && (n.config as { formId?: string } | undefined)?.formId === formId));
+      if (existing) return existing;
+      const wf: Workflow = {
+        id: "w_" + uid(),
+        name: `${formName} Automation`,
+        nodes: [{ id: "n1", type: "entry", label: "Entry Point", x: 40, y: 200, config: { kind: "entry", entity: "Forms", formId } }],
+        edges: [],
+      };
+      setWorkflows((p) => [...p, wf]);
+      return wf;
+    },
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

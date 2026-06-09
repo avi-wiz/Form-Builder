@@ -11,7 +11,7 @@ const NAV: NavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", to: "/" },
   { icon: ClipboardList, label: "Orders", to: "/orders" },
   { icon: Receipt, label: "Sales", to: "/sales" },
-  { icon: Users, label: "Retailers", to: "/customers/C_01396" },
+  { icon: Users, label: "Retailers", to: "/retailers" },
   { icon: FileText, label: "Forms", to: "/forms" },
   { icon: SlidersHorizontal, label: "Manage", to: "/manage" },
   { icon: FolderOpen, label: "Files", to: "/files" },
@@ -24,7 +24,7 @@ const NAV: NavItem[] = [
 
 function pathStartsWith(pathname: string, to: string) {
   if (to === "/forms") return pathname === "/forms" || pathname.startsWith("/forms/");
-  if (to.startsWith("/customers")) return pathname.startsWith("/customers");
+  if (to.startsWith("/retailers")) return pathname.startsWith("/retailers");
   if (to.startsWith("/settings")) return pathname.startsWith("/settings");
   return pathname === to;
 }

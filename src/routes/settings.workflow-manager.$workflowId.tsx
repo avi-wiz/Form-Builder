@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect, type DragEvent } from "react";
 import {
   Zap, GitBranch, Bell, CheckSquare, UserCheck, ArrowLeft,
@@ -172,6 +172,9 @@ function WorkflowPage() {
   };
 
   const sourceForm = fromFormId ? store.forms.find((f) => f.id === fromFormId) : null;
+  // The form that triggers this workflow (from its Entry Point node).
+  const entryNode = wf.nodes.find((n) => n.type === "entry");
+  const triggerForm = entryNode ? store.forms.find((f) => f.id === (entryNode.config as { formId?: string } | undefined)?.formId) : undefined;
   const breadcrumb = sourceForm
     ? [{ label: "Dashboard", to: "/forms" }, { label: "Forms", to: "/forms" }, { label: sourceForm.name, to: `/forms/builder/${sourceForm.id}` }, { label: "Workflow Manager" }]
     : [{ label: "Dashboard", to: "/forms" }, { label: "Settings" }, { label: "Workflow Manager" }, { label: wf.name }];
@@ -217,6 +220,16 @@ function WorkflowPage() {
             <h1 className="text-xl font-semibold">{wf.name}</h1>
             <Badge tone="primary">Active</Badge>
           </div>
+          {triggerForm && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+              <Zap className="h-4 w-4 shrink-0 text-primary" />
+              <span className="text-muted-foreground">Triggered by:</span>
+              <span className="font-semibold text-foreground">{triggerForm.name}</span>
+              <Link to="/forms/builder/$formId" params={{ formId: triggerForm.id }} className="ml-auto text-xs font-medium text-primary hover:underline">
+                Edit form →
+              </Link>
+            </div>
+          )}
           <div
             className="relative rounded-xl border border-border bg-card"
             style={{ width: W, height: H }}

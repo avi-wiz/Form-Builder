@@ -10,7 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as RetailersIndexRouteImport } from './routes/retailers.index'
 import { Route as FormsIndexRouteImport } from './routes/forms.index'
+import { Route as RetailersRetailerIdRouteImport } from './routes/retailers.$retailerId'
 import { Route as CustomersCustomerIdRouteImport } from './routes/customers.$customerId'
 import { Route as SettingsWorkflowManagerWorkflowIdRouteImport } from './routes/settings.workflow-manager.$workflowId'
 import { Route as FormsPreviewFormIdRouteImport } from './routes/forms.preview.$formId'
@@ -25,9 +27,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RetailersIndexRoute = RetailersIndexRouteImport.update({
+  id: '/retailers/',
+  path: '/retailers/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FormsIndexRoute = FormsIndexRouteImport.update({
   id: '/forms/',
   path: '/forms/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RetailersRetailerIdRoute = RetailersRetailerIdRouteImport.update({
+  id: '/retailers/$retailerId',
+  path: '/retailers/$retailerId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CustomersCustomerIdRoute = CustomersCustomerIdRouteImport.update({
@@ -75,7 +87,9 @@ const FormsFormIdAnalyticsRoute = FormsFormIdAnalyticsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
+  '/retailers/$retailerId': typeof RetailersRetailerIdRoute
   '/forms/': typeof FormsIndexRoute
+  '/retailers/': typeof RetailersIndexRoute
   '/forms/$formId/analytics': typeof FormsFormIdAnalyticsRoute
   '/forms/$formId/share': typeof FormsFormIdShareRoute
   '/forms/$formId/submissions': typeof FormsFormIdSubmissionsRoute
@@ -87,7 +101,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
+  '/retailers/$retailerId': typeof RetailersRetailerIdRoute
   '/forms': typeof FormsIndexRoute
+  '/retailers': typeof RetailersIndexRoute
   '/forms/$formId/analytics': typeof FormsFormIdAnalyticsRoute
   '/forms/$formId/share': typeof FormsFormIdShareRoute
   '/forms/$formId/submissions': typeof FormsFormIdSubmissionsRoute
@@ -100,7 +116,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
+  '/retailers/$retailerId': typeof RetailersRetailerIdRoute
   '/forms/': typeof FormsIndexRoute
+  '/retailers/': typeof RetailersIndexRoute
   '/forms/$formId/analytics': typeof FormsFormIdAnalyticsRoute
   '/forms/$formId/share': typeof FormsFormIdShareRoute
   '/forms/$formId/submissions': typeof FormsFormIdSubmissionsRoute
@@ -114,7 +132,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/customers/$customerId'
+    | '/retailers/$retailerId'
     | '/forms/'
+    | '/retailers/'
     | '/forms/$formId/analytics'
     | '/forms/$formId/share'
     | '/forms/$formId/submissions'
@@ -126,7 +146,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/customers/$customerId'
+    | '/retailers/$retailerId'
     | '/forms'
+    | '/retailers'
     | '/forms/$formId/analytics'
     | '/forms/$formId/share'
     | '/forms/$formId/submissions'
@@ -138,7 +160,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/customers/$customerId'
+    | '/retailers/$retailerId'
     | '/forms/'
+    | '/retailers/'
     | '/forms/$formId/analytics'
     | '/forms/$formId/share'
     | '/forms/$formId/submissions'
@@ -151,7 +175,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CustomersCustomerIdRoute: typeof CustomersCustomerIdRoute
+  RetailersRetailerIdRoute: typeof RetailersRetailerIdRoute
   FormsIndexRoute: typeof FormsIndexRoute
+  RetailersIndexRoute: typeof RetailersIndexRoute
   FormsFormIdAnalyticsRoute: typeof FormsFormIdAnalyticsRoute
   FormsFormIdShareRoute: typeof FormsFormIdShareRoute
   FormsFormIdSubmissionsRoute: typeof FormsFormIdSubmissionsRoute
@@ -170,11 +196,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/retailers/': {
+      id: '/retailers/'
+      path: '/retailers'
+      fullPath: '/retailers/'
+      preLoaderRoute: typeof RetailersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/forms/': {
       id: '/forms/'
       path: '/forms'
       fullPath: '/forms/'
       preLoaderRoute: typeof FormsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/retailers/$retailerId': {
+      id: '/retailers/$retailerId'
+      path: '/retailers/$retailerId'
+      fullPath: '/retailers/$retailerId'
+      preLoaderRoute: typeof RetailersRetailerIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/customers/$customerId': {
@@ -239,7 +279,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CustomersCustomerIdRoute: CustomersCustomerIdRoute,
+  RetailersRetailerIdRoute: RetailersRetailerIdRoute,
   FormsIndexRoute: FormsIndexRoute,
+  RetailersIndexRoute: RetailersIndexRoute,
   FormsFormIdAnalyticsRoute: FormsFormIdAnalyticsRoute,
   FormsFormIdShareRoute: FormsFormIdShareRoute,
   FormsFormIdSubmissionsRoute: FormsFormIdSubmissionsRoute,

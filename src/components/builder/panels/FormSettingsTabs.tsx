@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { Sparkles, Settings, Palette, Shield, Star, Info, ChevronDown, ChevronUp } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { Sparkles, Settings, Palette, Shield, Star, Info, ChevronDown, ChevronUp, ArrowRight, CheckCircle2 } from "lucide-react";
 import { Toggle } from "@/components/ui-kit";
-import { useStore, getSectionFields, DEFAULT_FORM_STYLE, DEFAULT_GOVERNANCE, type Form, type FormStyle, type FormGovernance, type RoleName, type RolePermissions } from "@/lib/forms-store";
+import { useStore, getSectionFields, DEFAULT_FORM_STYLE, DEFAULT_GOVERNANCE, type Form, type FormStyle, type FormGovernance, type RoleName, type RolePermissions, type AutomationConfig } from "@/lib/forms-store";
 import {
   CRM_ACTIONS, CRM_PROPERTIES, getActionLabel, getEntityLabel, getPropertiesForEntity,
   getDefaultMatchKeys, getDefaultMatchFoundAction, getMatchingSummary, suggestFieldMapping,
@@ -23,7 +23,7 @@ export function FormSettingsTabs({ form }: { form: Form }) {
         <TabBtn active={tab === "settings"} onClick={() => setTab("settings")}>Settings</TabBtn>
       </div>
       {tab === "submission" && <SubmissionTab form={form} />}
-      {tab === "automation" && <AutomationTab form={form} />}
+      {tab === "automation" && <AutomationTab form={form} onOpenSubmission={() => setTab("submission")} />}
       {tab === "style" && <StyleTab form={form} />}
       {tab === "settings" && <SettingsTab form={form} />}
     </div>
@@ -414,31 +414,95 @@ function AdvancedSettings({ form, action, setCrm }: { form: Form; action: CrmAct
   );
 }
 
-function AutomationTab({ form }: { form: Form }) {
+// Typical automation per CRM action. "Apply recommended" flips the matching
+// Quick Automation switches. Touchpoint/Campaign Response and other actions get
+// no recommendation (they rarely trigger downstream automation).
+function getRecommendation(action: CrmAction): { text: string; apply: Partial<AutomationConfig> } | null {
+  switch (action) {
+    case "create_retailer_account":
+      return {
+        text: "Notify the assigned rep + Send a welcome email + Create a 'Follow up' task in 7 days.",
+        apply: { notifyRep: true, sendEmail: true, emailTemplate: "Account Application Received", createTask: true, taskTitle: "Follow up", taskDue: "+1 week", taskPriority: "Medium" },
+      };
+    case "create_quote":
+      return {
+        text: "Notify the assigned rep + Send the quote to the buyer + Create a 'Quote sent' touchpoint.",
+        apply: { notifyRep: true, sendEmail: true, emailTemplate: "RFQ Received", createTask: true, taskTitle: "Quote sent", taskDue: "+1 day", taskPriority: "Medium" },
+      };
+    case "create_order":
+      return {
+        text: "Notify the assigned rep + Send order confirmation + Notify fulfillment.",
+        apply: { notifyRep: true, sendEmail: true, emailTemplate: "General Acknowledgement", notifyTeam: true, notifyTargets: ["Admin"] },
+      };
+    case "create_claim":
+      return {
+        text: "Notify the assigned rep + Acknowledge to buyer + Create a 'Review claim' task within 24h.",
+        apply: { notifyRep: true, sendEmail: true, emailTemplate: "General Acknowledgement", createTask: true, taskTitle: "Review claim", taskDue: "+1 day", taskPriority: "High" },
+      };
+    default:
+      return null;
+  }
+}
+
+function AutomationTab({ form, onOpenSubmission }: { form: Form; onOpenSubmission: () => void }) {
   const store = useStore();
+  const navigate = useNavigate();
+  const a = form.automation;
+  const setA = (patch: Partial<AutomationConfig>) => store.updateForm(form.id, { automation: { ...a, ...patch } });
+
+  const existingWorkflow = store.getWorkflowForForm(form.id);
+  const openWorkflowManager = () => {
+    const wf = store.ensureWorkflowForForm(form.id, form.name);
+    navigate({ to: "/settings/workflow-manager/$workflowId", params: { workflowId: wf.id }, search: { fromFormId: form.id } });
+  };
+
+  const rec = getRecommendation(form.crm.action);
+  const applyRecommended = () => {
+    if (!rec) return;
+    const merged: AutomationConfig = { ...a, ...rec.apply };
+    if (rec.apply.notifyTargets) {
+      merged.notifyTargets = Array.from(new Set([...a.notifyTargets, ...rec.apply.notifyTargets]));
+    }
+    store.updateForm(form.id, { automation: merged });
+  };
+
+  const defaultsCount = Object.keys(form.crm.defaults).length;
+
   return (
     <div className="space-y-1">
       <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-primary" /> Quick Automation</div>
-      <ToggleRow label="Send follow-up email" checked={form.automation.sendEmail} onChange={(v) => store.updateForm(form.id, { automation: { ...form.automation, sendEmail: v } })} />
-      {form.automation.sendEmail && (
+
+      {rec && (
+        <div className="mb-3 rounded-md border border-purple-200 bg-purple-50 p-3">
+          <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-purple-800">
+            <Sparkles className="h-3.5 w-3.5" /> Recommended for {getActionLabel(form.crm.action)}
+          </div>
+          <p className="text-[11px] leading-relaxed text-purple-700">{rec.text}</p>
+          <button onClick={applyRecommended} className="mt-2 inline-flex items-center gap-0.5 text-[11px] font-semibold text-purple-700 hover:underline">
+            Apply recommended <ChevronDown className="h-3 w-3 -rotate-90" />
+          </button>
+        </div>
+      )}
+
+      {/* 1 — Send follow-up email */}
+      <ToggleRow label="Send follow-up email" checked={a.sendEmail} onChange={(v) => setA({ sendEmail: v })} />
+      {a.sendEmail && (
         <div className="mb-1 pl-2 border-l-2 border-primary/30">
-          <select
-            value={form.automation.emailTemplate}
-            onChange={(e) => store.updateForm(form.id, { automation: { ...form.automation, emailTemplate: e.target.value } })}
-            className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
-          >
+          <select value={a.emailTemplate} onChange={(e) => setA({ emailTemplate: e.target.value })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
             {["Thank You", "RFQ Received", "Trade Show Follow-Up", "Account Application Received", "General Acknowledgement"].map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
         </div>
       )}
-      <ToggleRow label="Notify team" checked={form.automation.notifyTeam} onChange={(v) => store.updateForm(form.id, { automation: { ...form.automation, notifyTeam: v } })} />
-      {form.automation.notifyTeam && (
+
+      {/* 2 — Notify team */}
+      <ToggleRow label="Notify team" checked={a.notifyTeam} onChange={(v) => setA({ notifyTeam: v })} />
+      {a.notifyTeam && (
         <div className="mb-1 pl-2 border-l-2 border-primary/30 space-y-1.5">
           <div className="text-[11px] text-muted-foreground font-medium">Notify these users / roles:</div>
           {(["Admin", "Sales Manager", "Sales Rep", "John Carmichael", "Tyler Jones", "Auto-assigned rep"] as const).map((target) => {
-            const selected = form.automation.notifyTargets.includes(target);
+            const selected = a.notifyTargets.includes(target);
             return (
               <label key={target} className="flex items-center gap-2 text-sm">
                 <input
@@ -446,10 +510,8 @@ function AutomationTab({ form }: { form: Form }) {
                   className="h-4 w-4 accent-primary"
                   checked={selected}
                   onChange={(e) => {
-                    const next = e.target.checked
-                      ? [...form.automation.notifyTargets, target]
-                      : form.automation.notifyTargets.filter((t) => t !== target);
-                    store.updateForm(form.id, { automation: { ...form.automation, notifyTargets: next } });
+                    const next = e.target.checked ? [...a.notifyTargets, target] : a.notifyTargets.filter((t) => t !== target);
+                    setA({ notifyTargets: next });
                   }}
                 />
                 {target}
@@ -458,22 +520,26 @@ function AutomationTab({ form }: { form: Form }) {
           })}
         </div>
       )}
-      <ToggleRow label="Notify assigned Sales Rep" checked={!!form.automation.notifyRep} onChange={(v) => store.updateForm(form.id, { automation: { ...form.automation, notifyRep: v } })} />
-      {form.automation.notifyRep && (
+
+      {/* 3 — Notify assigned rep specifically */}
+      <ToggleRow label="Notify assigned Sales Rep" checked={!!a.notifyRep} onChange={(v) => setA({ notifyRep: v })} />
+      {a.notifyRep && (
         <div className="mb-1 pl-2 border-l-2 border-primary/30">
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             The Sales Rep assigned to the Retailer Account (via auto-assign or existing record) will receive an email notification with the submitted form data.
           </p>
         </div>
       )}
-      <ToggleRow label="Create task" checked={form.automation.createTask} onChange={(v) => store.updateForm(form.id, { automation: { ...form.automation, createTask: v } })} />
-      {form.automation.createTask && (
+
+      {/* 4 — Create task */}
+      <ToggleRow label="Create task" checked={a.createTask} onChange={(v) => setA({ createTask: v })} />
+      {a.createTask && (
         <div className="mb-1 pl-2 border-l-2 border-primary/30 space-y-2">
           <Labeled label="Task title">
-            <input value={form.automation.taskTitle} onChange={(e) => store.updateForm(form.id, { automation: { ...form.automation, taskTitle: e.target.value } })} placeholder="e.g. Follow up with {{Company Name}}" className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm" />
+            <input value={a.taskTitle} onChange={(e) => setA({ taskTitle: e.target.value })} placeholder="e.g. Follow up with {{Company Name}}" className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm" />
           </Labeled>
           <Labeled label="Assign to">
-            <select value={form.automation.taskAssignee} onChange={(e) => store.updateForm(form.id, { automation: { ...form.automation, taskAssignee: e.target.value } })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
+            <select value={a.taskAssignee} onChange={(e) => setA({ taskAssignee: e.target.value })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
               <option value="">— Select —</option>
               <option value="Round-Robin">Round-Robin</option>
               <option value="Auto-assigned rep">Auto-assigned rep</option>
@@ -482,14 +548,14 @@ function AutomationTab({ form }: { form: Form }) {
             </select>
           </Labeled>
           <Labeled label="Due date">
-            <select value={form.automation.taskDue} onChange={(e) => store.updateForm(form.id, { automation: { ...form.automation, taskDue: e.target.value } })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
+            <select value={a.taskDue} onChange={(e) => setA({ taskDue: e.target.value })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
               <option value="+1 day">+1 day</option>
               <option value="+2 days">+2 days</option>
               <option value="+1 week">+1 week</option>
             </select>
           </Labeled>
           <Labeled label="Priority">
-            <select value={form.automation.taskPriority} onChange={(e) => store.updateForm(form.id, { automation: { ...form.automation, taskPriority: e.target.value } })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
+            <select value={a.taskPriority} onChange={(e) => setA({ taskPriority: e.target.value })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
               <option value="Low">Low</option>
               <option value="Medium">Medium</option>
               <option value="High">High</option>
@@ -497,8 +563,68 @@ function AutomationTab({ form }: { form: Form }) {
           </Labeled>
         </div>
       )}
-      <ToggleRow label="Kai Dedup (detect duplicates on submit)" checked={!!form.automation.kaiDedup} onChange={(v) => store.updateForm(form.id, { automation: { ...form.automation, kaiDedup: v } })} />
-      <Link to="/settings/workflow-manager/$workflowId" params={{ workflowId: "w_1" }} search={{ fromFormId: form.id }} className="mt-2 inline-block text-sm font-medium text-primary hover:underline">Advanced automation →</Link>
+
+      {/* 5 — Auto-assign Rep */}
+      <ToggleRow label="Auto-assign Sales Rep" checked={!!a.autoAssign} onChange={(v) => setA({ autoAssign: v, assignMode: a.assignMode ?? "round_robin" })} />
+      {a.autoAssign && (
+        <div className="mb-1 pl-2 border-l-2 border-primary/30 space-y-2">
+          <Labeled label="Assignment mode">
+            <select value={a.assignMode ?? "round_robin"} onChange={(e) => setA({ assignMode: e.target.value as AutomationConfig["assignMode"] })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
+              <option value="round_robin">Round-robin</option>
+              <option value="territory">By territory</option>
+              <option value="fixed">Fixed rep</option>
+            </select>
+          </Labeled>
+          {a.assignMode === "fixed" && (
+            <Labeled label="Rep">
+              <select value={a.assignFixedRep ?? ""} onChange={(e) => setA({ assignFixedRep: e.target.value })} className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm">
+                <option value="">— Select —</option>
+                <option value="John Carmichael">John Carmichael</option>
+                <option value="Tyler Jones">Tyler Jones</option>
+              </select>
+            </Labeled>
+          )}
+        </div>
+      )}
+
+      {/* 6 — Set Lead/Status defaults → Submission tab Defaults */}
+      <button
+        onClick={onOpenSubmission}
+        className="flex w-full items-center justify-between py-1.5 text-sm hover:text-primary"
+      >
+        <span>Set status &amp; field defaults</span>
+        <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          {defaultsCount > 0 ? `${defaultsCount} configured` : "None"} <ChevronDown className="h-3 w-3 -rotate-90" />
+        </span>
+      </button>
+
+      <div className="mt-2 border-t border-border pt-2">
+        <ToggleRow label="Kai Dedup (detect duplicates on submit)" checked={!!a.kaiDedup} onChange={(v) => setA({ kaiDedup: v })} />
+      </div>
+
+      {/* Advanced escape hatch — Workflow Manager */}
+      <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3">
+        <div className="text-sm font-semibold text-foreground">Need more complex automation?</div>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+          Workflow Manager lets you build branching logic, status transitions, and multi-step automations.
+        </p>
+        {existingWorkflow ? (
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-green-700">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            This form has an advanced workflow attached.
+            <button onClick={openWorkflowManager} className="inline-flex items-center gap-0.5 text-primary hover:underline">
+              View <ArrowRight className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={openWorkflowManager}
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            <Settings className="h-3.5 w-3.5" /> Open Workflow Manager <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
