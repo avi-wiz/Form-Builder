@@ -216,19 +216,29 @@ function migrateSection(s: FormSection): FormSection {
   return { ...rest, rows };
 }
 
-// Maps V1 CRM action strings to V2 wholesale-native actions.
-const ACTION_MIGRATION: Record<string, CrmAction> = {
-  "lead": "create_retailer_account",
-  "deal": "create_order",
-  "lead_deal": "create_order",
-  "ticket": "create_ticket",
-  "none": "none",
+// Maps legacy CRM action strings to current actions, with any defaults the
+// transition implies. Covers V1 → V2 and V2 → V2.1 (entity-model pruning).
+const ACTION_MIGRATION: Record<string, { action: CrmAction; defaults?: Record<string, string | boolean> }> = {
+  // V1 → V2
+  "lead": { action: "create_retailer_account", defaults: { opening_order_status: "prospect" } },
+  "deal": { action: "create_order" },
+  "lead_deal": { action: "create_order" },
+  "ticket": { action: "create_ticket" },
+  "none": { action: "none" },
+  // V2 → V2.1
+  "create_buyer_contact": { action: "create_contact" },
+  "create_vendor": { action: "none" }, // removed entity — fall back to no-op
+  "create_standing_order": { action: "create_order", defaults: { order_type: "standing_order_template" } },
+  "create_sample_request": { action: "create_order", defaults: { order_type: "sample_complimentary" } },
+  // Form maps its fields into retailer.tax_exemption_certificates sub-object.
+  "create_tax_exemption": { action: "create_retailer_account", defaults: { maps_to_tax_exemption_certificates: true } },
+  "log_activity": { action: "log_touchpoint" }, // most activity is rep-driven; campaign responses re-mapped per form
 };
 
 const V2_ACTIONS = new Set<CrmAction>([
-  "none", "create_retailer_account", "create_buyer_contact", "create_quote",
+  "none", "create_retailer_account", "create_contact", "create_quote",
   "create_order", "create_credit_application", "create_claim",
-  "create_ticket", "log_activity",
+  "create_ticket", "log_touchpoint", "log_campaign_response",
 ]);
 
 // Collected across all migrateForm calls in a tick; warned once.
@@ -239,20 +249,16 @@ function migrateCrm(formId: string, crm: CRMConfig): CRMConfig {
   if (V2_ACTIONS.has(crm.action) && Array.isArray(crm.matchKeys) && crm.defaults) {
     return crm;
   }
-  // Legacy V1 config: map the action, discard the old fieldMap, derive match keys.
+  // Legacy config: map the action, discard the old fieldMap, derive match keys.
   const legacyAction = String((crm as { action: string }).action);
-  const newAction = ACTION_MIGRATION[legacyAction] ?? "none";
-  const defaults: Record<string, string | boolean> =
-    legacyAction === "lead" || legacyAction === "lead_deal"
-      ? { opening_order_status: "prospect" }
-      : {};
+  const mapped = ACTION_MIGRATION[legacyAction] ?? { action: "none" as CrmAction };
   migratedFormIds.push(formId);
   return {
-    action: newAction,
+    action: mapped.action,
     fieldMap: {},
-    matchKeys: getDefaultMatchKeys(newAction),
+    matchKeys: getDefaultMatchKeys(mapped.action),
     matchFoundAction: crm.matchFoundAction,
-    defaults,
+    defaults: mapped.defaults ?? {},
   };
 }
 
@@ -433,7 +439,7 @@ const RAW_SEED_FORMS: Form[] = [
       ]),
     ],
     afterSubmit: { mode: "message", message: "Thanks for your feedback!", redirectUrl: "", delay: 3 },
-    crm: { action: "log_activity", fieldMap: {}, matchKeys: getDefaultMatchKeys("log_activity"), defaults: { activity_type: "post_purchase_survey" } },
+    crm: { action: "log_campaign_response", fieldMap: {}, matchKeys: getDefaultMatchKeys("log_campaign_response"), defaults: { response_type: "post_purchase_survey_sent" } },
     automation: { sendEmail: false, emailTemplate: "General Acknowledgement", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Low" },
     submissionCount: 89, viewCount: 642,
   },
@@ -493,10 +499,10 @@ const RAW_SEED_FORMS: Form[] = [
         pf("retailer.store_count"),
       ]),
       seedSection("Contact", [
-        pf("buyer.first_name", { required: true }),
-        pf("buyer.last_name", { required: true }),
-        pf("buyer.email", { required: true }),
-        pf("buyer.phone"),
+        pf("contact.first_name", { required: true }),
+        pf("contact.last_name", { required: true }),
+        pf("contact.email", { required: true }),
+        pf("contact.phone"),
       ]),
     ],
     afterSubmit: { mode: "message", message: "Application received. Our team will review and follow up.", redirectUrl: "", delay: 3 },
@@ -599,8 +605,8 @@ const RAW_SEED_FORMS: Form[] = [
     sections: [
       seedSection("Your Information", [
         pf("retailer.legal_name", { displayName: "Name", required: true }),
-        pf("buyer.email", { required: true }),
-        pf("buyer.phone"),
+        pf("contact.email", { required: true }),
+        pf("contact.phone"),
       ], { quickAdd: true }),
       seedSection("Catalog Preferences", [
         pf("retailer.categories_carried", { displayName: "Categories of interest" }),
@@ -623,45 +629,8 @@ const RAW_SEED_FORMS: Form[] = [
       ]),
     ],
     afterSubmit: { mode: "message", message: "Thanks! Your catalog is on its way.", redirectUrl: "", delay: 3 },
-    crm: { action: "log_activity", fieldMap: {}, matchKeys: getDefaultMatchKeys("log_activity"), defaults: { activity_type: "catalog_drop_sent" } },
+    crm: { action: "log_campaign_response", fieldMap: {}, matchKeys: getDefaultMatchKeys("log_campaign_response"), defaults: { response_type: "catalog_drop_sent" } },
     automation: { sendEmail: true, emailTemplate: "Thank You", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Low" },
-    submissionCount: 0, viewCount: 0,
-  },
-  {
-    id: "f_vendor", name: "Vendor Onboarding", slug: "vendor-onboarding",
-    description: "Onboard a new supplier or vendor.",
-    status: "published", kind: "Custom",
-    createdAt: "2026-06-09", updatedAt: "2026-06-09",
-    multiStep: true,
-    sections: [
-      // Vendor entity removed (upstream supply-chain — wrong persona). This form
-      // is now a CRM-less intake; a future Procurement module would own it.
-      seedSection("Business Details", [
-        ff("Legal Name", "text", { required: true }),
-        ff("DBA", "text"),
-        ff("EIN", "text", { required: true }),
-        ff("Contact Name", "text", { required: true }),
-        ff("Email", "email", { required: true }),
-        ff("Phone", "phone"),
-        ff("Website", "url"),
-      ], { quickAdd: true }),
-      seedSection("Compliance", [
-        ff("W-9 File", "file", { required: true }),
-        ff("Insurance Cert File", "file"),
-        ff("Insurance Expiry", "date"),
-        ff("Compliance Certifications", "text"),
-      ]),
-      seedSection("Terms", [
-        ff("Payment Terms Requested", "text"),
-        ff("Product Categories", "text"),
-        ff("MOQ Policy", "text"),
-        ff("Lead Time", "text"),
-        ff("Returns Policy", "long_text"),
-      ]),
-    ],
-    afterSubmit: { mode: "message", message: "Vendor application received. We'll begin onboarding.", redirectUrl: "", delay: 3 },
-    crm: { action: "none", fieldMap: {}, matchKeys: [], defaults: {} },
-    automation: { sendEmail: true, emailTemplate: "Account Application Received", notifyTeam: true, notifyTargets: ["Admin"], createTask: true, taskTitle: "Onboard new vendor", taskAssignee: "Admin", taskDue: "+1 week", taskPriority: "Medium" },
     submissionCount: 0, viewCount: 0,
   },
   {
@@ -711,7 +680,7 @@ const RAW_SEED_FORMS: Form[] = [
       ]),
     ],
     afterSubmit: { mode: "message", message: "Thank you for your feedback!", redirectUrl: "", delay: 3 },
-    crm: { action: "log_activity", fieldMap: {}, matchKeys: getDefaultMatchKeys("log_activity"), defaults: { activity_type: "abr_meeting" } },
+    crm: { action: "log_touchpoint", fieldMap: {}, matchKeys: getDefaultMatchKeys("log_touchpoint"), defaults: { type: "abr_meeting" } },
     automation: { sendEmail: false, emailTemplate: "General Acknowledgement", notifyTeam: false, notifyTargets: [], createTask: false, taskTitle: "", taskAssignee: "", taskDue: "+1 day", taskPriority: "Low" },
     submissionCount: 0, viewCount: 0,
   },
@@ -766,7 +735,7 @@ const SEED_WORKFLOWS: Workflow[] = [
       { id: "n3", type: "action", label: "Create Retailer Account", x: 540, y: 70, config: { kind: "create_retailer_account", defaults: { opening_order_status: "prospect" } } },
       { id: "n4", type: "action", label: "Assign Sales Rep", x: 800, y: 70, config: { kind: "assign_rep", assignMode: "round-robin" } },
       { id: "n5", type: "action", label: "Send Notification", x: 1060, y: 70, config: { kind: "send_notification", target: "Assigned rep" } },
-      { id: "n6", type: "action", label: "Create Buyer Contact", x: 540, y: 330, config: { kind: "create_buyer_contact" } },
+      { id: "n6", type: "action", label: "Create Contact", x: 540, y: 330, config: { kind: "create_contact" } },
       { id: "n7", type: "action", label: "Assign Sales Rep", x: 800, y: 330, config: { kind: "assign_rep", assignMode: "round-robin" } },
     ],
     edges: [

@@ -3,7 +3,7 @@ import { useState, useEffect, type DragEvent } from "react";
 import {
   Zap, GitBranch, Bell, CheckSquare, UserCheck, ArrowLeft,
   Building2, User, FileText, ShoppingCart, CreditCard,
-  AlertTriangle, Ticket, Clock, ToggleRight, ArrowRightCircle,
+  AlertTriangle, Ticket, Clock, Megaphone, ToggleRight, ArrowRightCircle,
   type LucideIcon,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
@@ -27,13 +27,14 @@ const PALETTE_SECTIONS: PaletteSection[] = [
     title: "Entity Creation",
     items: [
       { kind: "create_retailer_account", label: "Create Retailer Account", type: "action", Icon: Building2 },
-      { kind: "create_buyer_contact", label: "Create Buyer Contact", type: "action", Icon: User },
+      { kind: "create_contact", label: "Create Contact", type: "action", Icon: User },
       { kind: "create_quote", label: "Create Quote", type: "action", Icon: FileText },
       { kind: "create_order", label: "Create Order", type: "action", Icon: ShoppingCart },
       { kind: "create_credit_application", label: "Create Credit Application", type: "action", Icon: CreditCard },
       { kind: "create_claim", label: "Create Claim / RMA", type: "action", Icon: AlertTriangle },
       { kind: "create_ticket", label: "Create Ticket", type: "action", Icon: Ticket },
-      { kind: "log_activity", label: "Log Activity", type: "action", Icon: Clock },
+      { kind: "log_touchpoint", label: "Log Touchpoint", type: "action", Icon: Clock },
+      { kind: "log_campaign_response", label: "Log Campaign Response", type: "action", Icon: Megaphone },
     ],
   },
   {

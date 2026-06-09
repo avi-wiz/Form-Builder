@@ -25,9 +25,9 @@ const US_STATES: FieldOption[] = [
 // - Trade Show is admin-managed master data (reference-only), still used as a
 //   lookup target by other entities — but not form-creatable.
 export type EntityType =
-  | "retailer_account" | "buyer_contact" | "quote" | "order"
+  | "retailer_account" | "contact" | "quote" | "order"
   | "credit_application" | "claim"
-  | "ticket" | "activity"
+  | "ticket" | "touchpoint" | "campaign_response"
   // Reference-only (no create action; used as lookup targets):
   | "trade_show"
   | "sales_rep" | "rep_group" | "price_list" | "payment_method"
@@ -35,9 +35,9 @@ export type EntityType =
 
 export type CrmAction =
   | "none"
-  | "create_retailer_account" | "create_buyer_contact" | "create_quote"
+  | "create_retailer_account" | "create_contact" | "create_quote"
   | "create_order" | "create_credit_application" | "create_claim"
-  | "create_ticket" | "log_activity";
+  | "create_ticket" | "log_touchpoint" | "log_campaign_response";
 
 export interface CrmPropertySeed {
   id: string;                    // e.g. "retailer.ein", "quote.expiry_date"
@@ -58,15 +58,15 @@ export const PROPERTY_GROUPS: {
   subGroups: string[];
   referenceOnly?: boolean;
 }[] = [
-  // ── Createable entities (8) ───────────────────────────────────────────────
+  // ── Createable entities (9) ───────────────────────────────────────────────
   {
     entity: "retailer_account",
     label: "Retailer Account",
     subGroups: ["Identity & Structure", "Commerce State", "Financial State", "GTM", "Logistics", "Tax Exemption Certificates"],
   },
   {
-    entity: "buyer_contact",
-    label: "Buyer Contact",
+    entity: "contact",
+    label: "Contact",
     subGroups: ["Personal", "Role", "Preferences", "Association"],
   },
   {
@@ -95,8 +95,13 @@ export const PROPERTY_GROUPS: {
     subGroups: ["General"],
   },
   {
-    entity: "activity",
-    label: "Activity",
+    entity: "touchpoint",
+    label: "Touchpoint",
+    subGroups: ["General"],
+  },
+  {
+    entity: "campaign_response",
+    label: "Campaign Response",
     subGroups: ["General"],
   },
 
@@ -299,20 +304,20 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "retailer.tax_cert_verified_date", label: "Tax Cert — Verified Date", entity: "retailer_account", group: "Tax Exemption Certificates", defaultFieldType: "date", helpText: "Repeatable block — add one set of certificate fields per state" },
 
   // ════════════════════════════════════════════════════════════════════════
-  // Buyer Contact
+  // Contact (not all contacts are buyers — owners, AP, store managers, designers)
   // ════════════════════════════════════════════════════════════════════════
 
   // ── Personal ──────────────────────────────────────────────────────────────
-  { id: "buyer.first_name", label: "First Name", entity: "buyer_contact", group: "Personal", defaultFieldType: "text", commonlyUsed: true },
-  { id: "buyer.last_name", label: "Last Name", entity: "buyer_contact", group: "Personal", defaultFieldType: "text", commonlyUsed: true },
-  { id: "buyer.email", label: "Email", entity: "buyer_contact", group: "Personal", defaultFieldType: "email", commonlyUsed: true },
-  { id: "buyer.phone", label: "Phone", entity: "buyer_contact", group: "Personal", defaultFieldType: "phone" },
-  { id: "buyer.phone_is_shared_line", label: "Phone Is Shared Line", entity: "buyer_contact", group: "Personal", defaultFieldType: "checkbox", helpText: "Flag for shared retail store phone — affects call strategy" },
-  { id: "buyer.mobile_phone", label: "Mobile Phone", entity: "buyer_contact", group: "Personal", defaultFieldType: "phone" },
-  { id: "buyer.title", label: "Title", entity: "buyer_contact", group: "Personal", defaultFieldType: "text" },
+  { id: "contact.first_name", label: "First Name", entity: "contact", group: "Personal", defaultFieldType: "text", commonlyUsed: true },
+  { id: "contact.last_name", label: "Last Name", entity: "contact", group: "Personal", defaultFieldType: "text", commonlyUsed: true },
+  { id: "contact.email", label: "Email", entity: "contact", group: "Personal", defaultFieldType: "email", commonlyUsed: true },
+  { id: "contact.phone", label: "Phone", entity: "contact", group: "Personal", defaultFieldType: "phone" },
+  { id: "contact.phone_is_shared_line", label: "Phone Is Shared Line", entity: "contact", group: "Personal", defaultFieldType: "checkbox", helpText: "Flag for shared retail store phone — affects call strategy" },
+  { id: "contact.mobile_phone", label: "Mobile Phone", entity: "contact", group: "Personal", defaultFieldType: "phone" },
+  { id: "contact.title", label: "Title", entity: "contact", group: "Personal", defaultFieldType: "text" },
 
   // ── Role ──────────────────────────────────────────────────────────────────
-  { id: "buyer.role_labels", label: "Role Labels", entity: "buyer_contact", group: "Role", defaultFieldType: "multi_select",
+  { id: "contact.role_labels", label: "Role Labels", entity: "contact", group: "Role", defaultFieldType: "multi_select",
     options: [
       { label: "Owner", value: "owner" },
       { label: "Head Buyer", value: "head_buyer" },
@@ -322,7 +327,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Merchandiser", value: "merchandiser" },
       { label: "E-commerce Manager", value: "ecom_manager" },
     ]},
-  { id: "buyer.categories_buys", label: "Categories Buys", entity: "buyer_contact", group: "Role", defaultFieldType: "multi_select",
+  { id: "contact.categories_buys", label: "Categories Buys", entity: "contact", group: "Role", defaultFieldType: "multi_select",
     options: [
       { label: "Lighting", value: "lighting" },
       { label: "Furniture", value: "furniture" },
@@ -332,7 +337,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Outdoor", value: "outdoor" },
       { label: "Gift", value: "gift" },
     ]},
-  { id: "buyer.buying_seasons", label: "Buying Seasons", entity: "buyer_contact", group: "Role", defaultFieldType: "multi_select",
+  { id: "contact.buying_seasons", label: "Buying Seasons", entity: "contact", group: "Role", defaultFieldType: "multi_select",
     options: [
       { label: "Spring", value: "spring" },
       { label: "Summer", value: "summer" },
@@ -340,7 +345,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Winter", value: "winter" },
       { label: "Holiday", value: "holiday" },
     ]},
-  { id: "buyer.decision_authority", label: "Decision Authority", entity: "buyer_contact", group: "Role", defaultFieldType: "select",
+  { id: "contact.decision_authority", label: "Decision Authority", entity: "contact", group: "Role", defaultFieldType: "select",
     options: [
       { label: "Final", value: "final" },
       { label: "Influencer", value: "influencer" },
@@ -348,20 +353,21 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
     ]},
 
   // ── Preferences ───────────────────────────────────────────────────────────
-  { id: "buyer.preferred_contact", label: "Preferred Contact", entity: "buyer_contact", group: "Preferences", defaultFieldType: "select",
+  { id: "contact.preferred_contact", label: "Preferred Contact", entity: "contact", group: "Preferences", defaultFieldType: "select",
     options: [
       { label: "Email", value: "email" },
       { label: "SMS", value: "sms" },
       { label: "WhatsApp", value: "whatsapp" },
       { label: "In Person", value: "in_person" },
     ]},
-  { id: "buyer.opt_in_email", label: "Opt-In Email", entity: "buyer_contact", group: "Preferences", defaultFieldType: "checkbox" },
-  { id: "buyer.opt_in_sms", label: "Opt-In SMS", entity: "buyer_contact", group: "Preferences", defaultFieldType: "checkbox" },
-  { id: "buyer.last_engaged_date", label: "Last Engaged Date", entity: "buyer_contact", group: "Preferences", defaultFieldType: "date" },
+  { id: "contact.opt_in_email", label: "Opt-In Email", entity: "contact", group: "Preferences", defaultFieldType: "checkbox" },
+  { id: "contact.opt_in_sms", label: "Opt-In SMS", entity: "contact", group: "Preferences", defaultFieldType: "checkbox" },
+  { id: "contact.last_engaged_date", label: "Last Engaged Date", entity: "contact", group: "Preferences", defaultFieldType: "date" },
 
   // ── Association ───────────────────────────────────────────────────────────
-  { id: "buyer.retailer", label: "Retailer", entity: "buyer_contact", group: "Association", defaultFieldType: "lookup", lookupEntity: "retailer_account" },
-  { id: "buyer.store_location", label: "Store Location", entity: "buyer_contact", group: "Association", defaultFieldType: "lookup", lookupEntity: "store_location" },
+  { id: "contact.primary_retailer", label: "Retailer", entity: "contact", group: "Association", defaultFieldType: "lookup", lookupEntity: "retailer_account", helpText: "The contact's primary retailer (1:1 default)" },
+  { id: "contact.also_associated_with", label: "Also Associated With", entity: "contact", group: "Association", defaultFieldType: "multi_select", lookupEntity: "retailer_account", helpText: "For contacts that work across multiple retailers — buying-group consultants, designers serving multiple hospitality chains, etc." },
+  { id: "contact.store_location", label: "Store Location", entity: "contact", group: "Association", defaultFieldType: "lookup", lookupEntity: "store_location" },
 
   // ════════════════════════════════════════════════════════════════════════
   // Quote
@@ -379,7 +385,7 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
       { label: "Rep Initiated", value: "rep_initiated" },
     ]},
   { id: "quote.retailer", label: "Retailer", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "retailer_account" },
-  { id: "quote.buyer_contact", label: "Buyer Contact", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "buyer_contact" },
+  { id: "quote.contact", label: "Contact", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "contact" },
   { id: "quote.rep", label: "Rep", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "sales_rep" },
   { id: "quote.trade_show", label: "Trade Show", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "trade_show" },
   { id: "quote.price_list_snapshot", label: "Price List Snapshot", entity: "quote", group: "Header", defaultFieldType: "lookup", lookupEntity: "price_list" },
@@ -769,24 +775,48 @@ export const CRM_PROPERTIES: CrmPropertySeed[] = [
   { id: "ticket.related_sku", label: "Related SKU", entity: "ticket", group: "General", defaultFieldType: "lookup", lookupEntity: "sku" },
 
   // ════════════════════════════════════════════════════════════════════════
-  // Activity
+  // Touchpoint (rep-created, relationship-building — split out from Activity)
   // ════════════════════════════════════════════════════════════════════════
-  { id: "activity.activity_type", label: "Activity Type", entity: "activity", group: "General", defaultFieldType: "select",
+  { id: "touchpoint.type", label: "Type", entity: "touchpoint", group: "General", defaultFieldType: "select",
     options: [
+      { label: "Visit", value: "visit" },
+      { label: "Call", value: "call" },
+      { label: "Email", value: "email" },
+      { label: "Meeting", value: "meeting" },
+      { label: "Note", value: "note" },
       { label: "Showroom Visit", value: "showroom_visit" },
       { label: "Show Booth Conversation", value: "show_booth_conversation" },
-      { label: "Line Sheet Sent", value: "line_sheet_sent" },
-      { label: "Virtual Showroom Session", value: "virtual_showroom_session" },
-      { label: "Catalog Drop Sent", value: "catalog_drop_sent" },
-      { label: "Reorder Reminder Sent", value: "reorder_reminder_sent" },
       { label: "ABR Meeting", value: "abr_meeting" },
-      { label: "NPS Survey Sent", value: "nps_survey_sent" },
-      { label: "Post-Purchase Survey", value: "post_purchase_survey" },
+      { label: "Line Sheet Sent", value: "line_sheet_sent" },
     ]},
-  { id: "activity.notes", label: "Notes", entity: "activity", group: "General", defaultFieldType: "long_text" },
-  { id: "activity.related_retailer", label: "Related Retailer", entity: "activity", group: "General", defaultFieldType: "lookup", lookupEntity: "retailer_account" },
-  { id: "activity.related_order", label: "Related Order", entity: "activity", group: "General", defaultFieldType: "lookup", lookupEntity: "order" },
-  { id: "activity.related_quote", label: "Related Quote", entity: "activity", group: "General", defaultFieldType: "lookup", lookupEntity: "quote" },
+  { id: "touchpoint.notes", label: "Notes", entity: "touchpoint", group: "General", defaultFieldType: "long_text" },
+  { id: "touchpoint.related_retailer", label: "Related Retailer", entity: "touchpoint", group: "General", defaultFieldType: "lookup", lookupEntity: "retailer_account", commonlyUsed: true },
+  { id: "touchpoint.related_contact", label: "Related Contact", entity: "touchpoint", group: "General", defaultFieldType: "lookup", lookupEntity: "contact" },
+  { id: "touchpoint.related_quote", label: "Related Quote", entity: "touchpoint", group: "General", defaultFieldType: "lookup", lookupEntity: "quote" },
+  { id: "touchpoint.related_order", label: "Related Order", entity: "touchpoint", group: "General", defaultFieldType: "lookup", lookupEntity: "order" },
+  { id: "touchpoint.location", label: "Location", entity: "touchpoint", group: "General", defaultFieldType: "text", helpText: "For in-person events" },
+  { id: "touchpoint.duration_minutes", label: "Duration (minutes)", entity: "touchpoint", group: "General", defaultFieldType: "number" },
+  { id: "touchpoint.logged_by", label: "Logged By", entity: "touchpoint", group: "General", defaultFieldType: "lookup", lookupEntity: "sales_rep", helpText: "Auto-populated with the rep who logged the touchpoint" },
+  { id: "touchpoint.touchpoint_date", label: "Touchpoint Date", entity: "touchpoint", group: "General", defaultFieldType: "date" },
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Campaign Response (system-created, marketing-driven — split out from Activity)
+  // ════════════════════════════════════════════════════════════════════════
+  { id: "campaign_response.campaign_id", label: "Campaign ID", entity: "campaign_response", group: "General", defaultFieldType: "text" },
+  { id: "campaign_response.response_type", label: "Response Type", entity: "campaign_response", group: "General", defaultFieldType: "select",
+    options: [
+      { label: "Catalog Drop Sent", value: "catalog_drop_sent" },
+      { label: "NPS Survey Sent", value: "nps_survey_sent" },
+      { label: "NPS Response Received", value: "nps_response_received" },
+      { label: "Post-Purchase Survey Sent", value: "post_purchase_survey_sent" },
+      { label: "Post-Purchase Response Received", value: "post_purchase_response_received" },
+      { label: "Reorder Reminder Sent", value: "reorder_reminder_sent" },
+      { label: "Virtual Showroom Session", value: "virtual_showroom_session" },
+    ]},
+  { id: "campaign_response.response_data", label: "Response Data", entity: "campaign_response", group: "General", defaultFieldType: "long_text", helpText: "Survey responses, NPS scores, etc." },
+  { id: "campaign_response.related_retailer", label: "Related Retailer", entity: "campaign_response", group: "General", defaultFieldType: "lookup", lookupEntity: "retailer_account" },
+  { id: "campaign_response.related_order", label: "Related Order", entity: "campaign_response", group: "General", defaultFieldType: "lookup", lookupEntity: "order" },
+  { id: "campaign_response.response_date", label: "Response Date", entity: "campaign_response", group: "General", defaultFieldType: "date" },
 
   // ════════════════════════════════════════════════════════════════════════
   // Sales Rep (reference-only)
@@ -952,13 +982,14 @@ export function getEntityLabel(entity: EntityType): string {
 
 const ACTION_TO_ENTITY: Record<Exclude<CrmAction, "none">, EntityType> = {
   create_retailer_account: "retailer_account",
-  create_buyer_contact: "buyer_contact",
+  create_contact: "contact",
   create_quote: "quote",
   create_order: "order",
   create_credit_application: "credit_application",
   create_claim: "claim",
   create_ticket: "ticket",
-  log_activity: "activity",
+  log_touchpoint: "touchpoint",
+  log_campaign_response: "campaign_response",
 };
 
 // All selectable CRM actions, in display order (the 13 createable/log actions).
@@ -971,7 +1002,8 @@ export function entityForAction(action: CrmAction): EntityType | null {
 
 export function getActionLabel(action: CrmAction): string {
   if (action === "none") return "No CRM action";
-  if (action === "log_activity") return "Log Activity";
+  if (action === "log_touchpoint") return "Log Touchpoint";
+  if (action === "log_campaign_response") return "Log Campaign Response";
   return "Create " + getEntityLabel(ACTION_TO_ENTITY[action]);
 }
 
@@ -979,7 +1011,7 @@ export function getActionLabel(action: CrmAction): string {
 // NEVER match — they always create a new record (Quote, Order, Claim, Ticket).
 const MATCH_KEYS: Partial<Record<EntityType, string[]>> = {
   retailer_account: ["retailer.ein", "retailer.legal_name"],
-  buyer_contact: ["buyer.email", "buyer.phone"],
+  contact: ["contact.email", "contact.phone"],
   credit_application: ["credit_application.ein", "credit_application.status"],
 };
 
@@ -992,7 +1024,7 @@ export function getDefaultMatchKeys(action: CrmAction): string[] {
 // Placeholder options for lookup fields in preview/canvas (no real backend).
 const LOOKUP_PLACEHOLDERS: Partial<Record<EntityType, string[]>> = {
   retailer_account: ["Acme Lighting Co.", "Pacific Coast Imports", "Bright Decor LLC"],
-  buyer_contact: ["Sarah Mills", "Marcus Lin", "Linda Park"],
+  contact: ["Sarah Mills", "Marcus Lin", "Linda Park"],
   sales_rep: ["Sample Rep 1", "Sample Rep 2", "Sample Rep 3"],
   rep_group: ["Southeast Home Group", "West Coast Reps", "Midwest Partners"],
   price_list: ["Wholesale", "Preferred", "VIP"],
@@ -1014,11 +1046,12 @@ export function entityBadgeClasses(entity: EntityType): string {
     case "quote":            return "bg-blue-100 text-blue-700";
     case "order":            return "bg-purple-100 text-purple-700";
     case "claim":            return "bg-red-100 text-red-700";
-    case "buyer_contact":    return "bg-sky-100 text-sky-700";
+    case "contact":          return "bg-sky-100 text-sky-700";
     case "credit_application": return "bg-orange-100 text-orange-700";
     case "trade_show":       return "bg-pink-100 text-pink-700";
     case "ticket":           return "bg-rose-100 text-rose-700";
-    case "activity":         return "bg-slate-100 text-slate-700";
+    case "touchpoint":       return "bg-slate-100 text-slate-700";
+    case "campaign_response": return "bg-cyan-100 text-cyan-700";
     default:                 return "bg-gray-100 text-gray-700";
   }
 }
