@@ -1,10 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Plus, MoreVertical, FileText, CheckCircle2, BarChart3, Inbox, Copy, Archive, Trash2, Pencil, Eye, ArrowUp, ArrowDown, Share2 } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { Plus, MoreVertical, FileText, CheckCircle2, BarChart3, Inbox, Copy, Archive, Trash2, Pencil, Eye, ArrowUp, ArrowDown, Share2, Building2, Package, AlertTriangle, ArrowLeft, X, ArrowRight } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Btn, Badge, Modal } from "@/components/ui-kit";
 import { useStore, type FormStatus, type FormKind } from "@/lib/forms-store";
-import { getActionLabel } from "@/lib/crm-catalog";
+import { getActionLabel, type CrmAction } from "@/lib/crm-catalog";
 
 export const Route = createFileRoute("/forms/")({
   head: () => ({ meta: [{ title: "Forms · WizCommerce" }, { name: "description", content: "Manage all forms across your wholesale workspace." }] }),
@@ -23,6 +24,8 @@ function FormsDashboard() {
   const [sort, setSort] = useState<{ key: "updatedAt" | "name" | "submissionCount" | "createdAt"; dir: "asc" | "desc" }>({ key: "updatedAt", dir: "desc" });
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  // Template chooser. `chooser.outcome` of "" means start at Step 1 (outcome list).
+  const [chooser, setChooser] = useState<{ open: boolean; outcome: string }>({ open: false, outcome: "" });
 
   const stats = useMemo(() => {
     const f = store.forms;
@@ -48,18 +51,58 @@ function FormsDashboard() {
     return r;
   }, [store.forms, statusFilter, typeFilter, sort]);
 
-  const handleCreate = () => {
-    const f = store.createForm();
+  // Step 3 — clone a seed form into a new draft and open the builder.
+  const useTemplate = (seedId: string) => {
+    const f = store.cloneForm(seedId) ?? store.createForm();
+    setChooser({ open: false, outcome: "" });
     navigate({ to: "/forms/builder/$formId", params: { formId: f.id } });
   };
+
+  const createBlank = () => {
+    const f = store.createForm();
+    setChooser({ open: false, outcome: "" });
+    navigate({ to: "/forms/builder/$formId", params: { formId: f.id } });
+  };
+
+  // Outcome cards either open Step 2 or, for "blank", skip straight to the builder.
+  const pickOutcome = (key: string) => {
+    if (key === "blank") return createBlank();
+    setChooser({ open: true, outcome: key });
+  };
+
+  // For 5+ forms: suggest templates whose CRM action the user hasn't built yet.
+  const suggestions = useMemo(() => {
+    if (store.forms.length < 5) return [];
+    const builtActions = new Set(store.forms.map((f) => f.crm.action));
+    return ALL_TEMPLATES.filter((t) => !builtActions.has(t.action)).slice(0, 4);
+  }, [store.forms]);
 
   return (
     <AppShell breadcrumb={[{ label: "Dashboard", to: "/forms" }, { label: "Forms" }]}>
       <div className="mx-auto max-w-7xl space-y-6 p-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-foreground">Forms</h1>
-          <Btn onClick={handleCreate}><Plus className="h-4 w-4" />Create Form</Btn>
+          <Btn onClick={() => setChooser({ open: true, outcome: "" })}><Plus className="h-4 w-4" />New Form</Btn>
         </div>
+
+        {suggestions.length > 0 && (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Suggested templates</div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {suggestions.map((t) => (
+                <button
+                  key={t.seedId}
+                  onClick={() => useTemplate(t.seedId)}
+                  className="group flex flex-col items-start gap-1 rounded-lg border border-border p-3 text-left hover:border-primary hover:bg-primary/5"
+                >
+                  <span className="text-sm font-medium text-foreground">{t.name}</span>
+                  <span className="text-[11px] text-muted-foreground">{t.description}</span>
+                  <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100">Use template <ArrowRight className="h-3 w-3" /></span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard icon={FileText} label="Total Forms" value={stats.total} tint="primary" />
@@ -68,6 +111,13 @@ function FormsDashboard() {
           <StatCard icon={BarChart3} label="Avg. Conversion Rate" value={stats.conversion + "%"} tint="warning" />
         </div>
 
+        {store.forms.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card p-6">
+            <div className="mb-1 text-base font-semibold text-foreground">Create your first form</div>
+            <p className="mb-4 text-sm text-muted-foreground">Pick what this form is for — we'll start you with a matching template.</p>
+            <OutcomeGrid onPick={pickOutcome} />
+          </div>
+        ) : (
         <div className="rounded-xl border border-border bg-card">
           <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
             <span className="text-sm font-medium text-foreground">All Forms</span>
@@ -132,6 +182,7 @@ function FormsDashboard() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       <Modal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title="Delete form?"
@@ -143,7 +194,161 @@ function FormsDashboard() {
         }>
         This will permanently delete the form and all its submissions. This action cannot be undone.
       </Modal>
+
+      <NewFormDialog
+        open={chooser.open}
+        outcome={chooser.outcome}
+        onOutcome={(key) => setChooser({ open: true, outcome: key })}
+        onBack={() => setChooser({ open: true, outcome: "" })}
+        onClose={() => setChooser({ open: false, outcome: "" })}
+        onUseTemplate={useTemplate}
+        onBlank={createBlank}
+      />
     </AppShell>
+  );
+}
+
+// ── Template-led new-form flow ───────────────────────────────────────────────
+
+type Template = { seedId: string; name: string; description: string; action: CrmAction };
+type Outcome = { key: string; Icon: typeof FileText; heading: string; blurb: string; templates: Template[] };
+
+const OUTCOMES: Outcome[] = [
+  {
+    key: "accounts", Icon: Building2, heading: "Capture new accounts",
+    blurb: "Trade show leads, dealer applications, contact-us inquiries",
+    templates: [
+      { seedId: "f_trade_show", name: "Trade Show Lead Capture", description: "Capture leads at trade shows in seconds.", action: "create_retailer_account" },
+      { seedId: "f_dealer_app", name: "Dealer / Reseller Application", description: "Apply to become an authorized dealer.", action: "create_retailer_account" },
+      { seedId: "f_contact", name: "Contact Us", description: "Website contact-us inquiry.", action: "create_retailer_account" },
+      { seedId: "f_catalog", name: "Catalog Request", description: "Request our latest product catalog.", action: "log_campaign_response" },
+    ],
+  },
+  {
+    key: "orders", Icon: Package, heading: "Take orders or quotes",
+    blurb: "RFQs, custom orders, reorders, standing order setups",
+    templates: [
+      { seedId: "f_rfq", name: "Request for Quote", description: "Let buyers request a custom quote.", action: "create_quote" },
+      { seedId: "f_standing_order", name: "Standing Order Setup", description: "Set up a recurring standing order.", action: "create_order" },
+      { seedId: "f_sample_request", name: "Sample Request", description: "Request product samples for evaluation.", action: "create_order" },
+    ],
+  },
+  {
+    key: "issues", Icon: AlertTriangle, heading: "Handle issues",
+    blurb: "Claims, returns, complaints, support tickets",
+    templates: [
+      { seedId: "f_claim", name: "Claim / RMA", description: "File a damage, defect, or shortage claim.", action: "create_claim" },
+      { seedId: "f_ticket", name: "Support Ticket", description: "Log a support request, question, or dispute.", action: "create_ticket" },
+    ],
+  },
+  {
+    key: "surveys", Icon: BarChart3, heading: "Run surveys and campaigns",
+    blurb: "NPS surveys, ABR intake, catalog requests, feedback",
+    templates: [
+      { seedId: "f_abr", name: "Annual Business Review Intake", description: "Collect annual business review feedback.", action: "log_touchpoint" },
+      { seedId: "f_feedback", name: "Post-Purchase Feedback (NPS)", description: "Tell us how we did.", action: "log_campaign_response" },
+    ],
+  },
+  {
+    key: "blank", Icon: Pencil, heading: "Something else",
+    blurb: "Start with a blank form and configure it yourself",
+    templates: [],
+  },
+];
+
+const ALL_TEMPLATES: Template[] = OUTCOMES.flatMap((o) => o.templates);
+
+function actionBadge(action: CrmAction): string {
+  if (action === "none") return "No CRM record";
+  return "→ " + getActionLabel(action).replace(/^Create /, "Creates ").replace(/^Log /, "Logs ");
+}
+
+function OutcomeGrid({ onPick }: { onPick: (key: string) => void }) {
+  return (
+    <div className="space-y-2">
+      {OUTCOMES.map((o) => (
+        <button
+          key={o.key}
+          onClick={() => onPick(o.key)}
+          className="group flex w-full items-start gap-3 rounded-lg border border-border p-3 text-left hover:border-primary hover:bg-primary/5"
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground group-hover:bg-primary/10 group-hover:text-primary">
+            <o.Icon className="h-5 w-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-foreground">{o.heading}</span>
+            <span className="block text-xs text-muted-foreground">{o.blurb}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function NewFormDialog({
+  open, outcome, onOutcome, onBack, onClose, onUseTemplate, onBlank,
+}: {
+  open: boolean;
+  outcome: string;
+  onOutcome: (key: string) => void;
+  onBack: () => void;
+  onClose: () => void;
+  onUseTemplate: (seedId: string) => void;
+  onBlank: () => void;
+}) {
+  const current = OUTCOMES.find((o) => o.key === outcome);
+  const onStep2 = !!current && current.key !== "blank";
+
+  return (
+    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-foreground/40" />
+        <Dialog.Content className="fixed inset-0 z-50 flex flex-col bg-background focus:outline-none">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex items-center gap-2">
+              {onStep2 && (
+                <button onClick={onBack} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" aria-label="Back">
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              )}
+              <Dialog.Title className="text-lg font-semibold text-foreground">
+                {onStep2 ? current!.heading : "What's this form for?"}
+              </Dialog.Title>
+            </div>
+            <Dialog.Close className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" aria-label="Close">
+              <X className="h-5 w-5" />
+            </Dialog.Close>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 py-6">
+            <div className="mx-auto max-w-2xl">
+              {!onStep2 ? (
+                <OutcomeGrid onPick={onOutcome} />
+              ) : (
+                <div className="space-y-3">
+                  <Dialog.Description className="text-sm text-muted-foreground">
+                    Choose a template to start from — you can change everything later.
+                  </Dialog.Description>
+                  {current!.templates.map((t) => (
+                    <div key={t.seedId} className="flex items-center justify-between gap-3 rounded-lg border border-border p-4">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-foreground">{t.name}</div>
+                        <div className="text-xs text-muted-foreground">{t.description}</div>
+                        <span className="mt-1.5 inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{actionBadge(t.action)}</span>
+                      </div>
+                      <Btn onClick={() => onUseTemplate(t.seedId)}>Use template</Btn>
+                    </div>
+                  ))}
+                  <button onClick={onBlank} className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+                    …or start from a blank form instead
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

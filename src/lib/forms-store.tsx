@@ -563,6 +563,26 @@ const RAW_SEED_FORMS: Form[] = [
     submissionCount: 0, viewCount: 0,
   },
   {
+    id: "f_ticket", name: "Support Ticket", slug: "support-ticket",
+    description: "Log a support request, question, or dispute.",
+    status: "published", kind: "Custom",
+    createdAt: "2026-06-09", updatedAt: "2026-06-09",
+    multiStep: false,
+    sections: [
+      seedSection("Ticket Details", [
+        pf("ticket.subject", { required: true }),
+        pf("ticket.type", { required: true }),
+        pf("ticket.priority"),
+        pf("ticket.description", { required: true }),
+        pf("ticket.related_order"),
+      ], { quickAdd: true }),
+    ],
+    afterSubmit: { mode: "message", message: "Ticket received. Our support team will follow up shortly.", redirectUrl: "", delay: 3 },
+    crm: { action: "create_ticket", fieldMap: {}, matchKeys: getDefaultMatchKeys("create_ticket"), defaults: { priority: "medium" } },
+    automation: { sendEmail: true, emailTemplate: "General Acknowledgement", notifyTeam: true, notifyTargets: ["Admin"], createTask: true, taskTitle: "Respond to support ticket", taskAssignee: "Admin", taskDue: "+1 day", taskPriority: "Medium" },
+    submissionCount: 0, viewCount: 0,
+  },
+  {
     id: "f_standing_order", name: "Standing Order Setup", slug: "standing-order",
     description: "Set up a recurring standing order.",
     status: "published", kind: "Custom",
