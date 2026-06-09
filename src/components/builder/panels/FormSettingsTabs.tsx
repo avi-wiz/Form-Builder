@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Sparkles, Settings, Palette, Shield, Star, Info } from "lucide-react";
+import { Sparkles, Settings, Palette, Shield, Star, Info, ChevronDown, ChevronUp } from "lucide-react";
 import { Toggle } from "@/components/ui-kit";
 import { useStore, getSectionFields, DEFAULT_FORM_STYLE, DEFAULT_GOVERNANCE, type Form, type FormStyle, type FormGovernance, type RoleName, type RolePermissions } from "@/lib/forms-store";
 import {
   CRM_ACTIONS, CRM_PROPERTIES, getActionLabel, getEntityLabel, getPropertiesForEntity,
-  getDefaultMatchKeys, entityForAction, entityBadgeClasses,
+  getDefaultMatchKeys, getDefaultMatchFoundAction, getMatchingSummary, suggestFieldMapping,
+  entityForAction, entityBadgeClasses,
   type CrmAction, type CrmPropertySeed,
 } from "@/lib/crm-catalog";
 
@@ -99,20 +100,33 @@ function SubmissionTab({ form }: { form: Form }) {
   );
 }
 
-// One component for all 13 CRM actions. The catalog drives everything that
+// One component for all CRM actions. The catalog drives everything that
 // appears below the action selector — no per-entity hardcoded panels.
 function EntityActionPanel({ form }: { form: Form }) {
   const store = useStore();
   const action = form.crm.action;
   const entity = entityForAction(action);
 
-  const setCrm = (patch: Partial<typeof form.crm>) =>
-    store.updateForm(form.id, { crm: { ...form.crm, ...patch } });
+  // Stable setter that always reads the latest crm off a ref, so child effects
+  // (auto-mapping) that capture it can't clobber concurrent edits with stale state.
+  const formRef = useRef(form);
+  formRef.current = form;
+  const setCrm = useCallback(
+    (patch: Partial<Form["crm"]>) =>
+      store.updateForm(formRef.current.id, { crm: { ...formRef.current.crm, ...patch } }),
+    [store],
+  );
 
-  // Changing the action resets match keys to the new entity's defaults and
-  // clears the field map (old mappings don't apply to a different entity).
+  // Changing the action resets match keys + matchFoundAction to the new entity's
+  // defaults and clears the field map (old mappings don't apply to a new entity).
   const onActionChange = (next: CrmAction) => {
-    setCrm({ action: next, matchKeys: getDefaultMatchKeys(next), fieldMap: {}, defaults: {} });
+    setCrm({
+      action: next,
+      matchKeys: getDefaultMatchKeys(next),
+      matchFoundAction: getDefaultMatchFoundAction(next),
+      fieldMap: {},
+      defaults: {},
+    });
   };
 
   return (
@@ -135,9 +149,11 @@ function EntityActionPanel({ form }: { form: Form }) {
         </p>
       ) : (
         <div className="mt-4 space-y-4">
-          <RecordMatchingSection form={form} action={action} setCrm={setCrm} />
           <DefaultsSection form={form} entity={entity} setCrm={setCrm} />
-          <FieldMappingSection form={form} entity={entity} setCrm={setCrm} />
+          {/* key={entity} resets auto-map session state when the action changes */}
+          <FieldMappingSection key={entity} form={form} entity={entity} setCrm={setCrm} />
+          <MatchingChip action={action} matchFoundAction={form.crm.matchFoundAction} />
+          <AdvancedSettings form={form} action={action} setCrm={setCrm} />
         </div>
       )}
     </div>
@@ -150,112 +166,122 @@ function findProp(id: string): CrmPropertySeed | undefined {
   return CRM_PROPERTIES.find((p) => p.id === id);
 }
 
-// Only shown for entities that have match keys. Always-create entities
-// (quote, order, claim, ticket) get no defaults → hidden.
-function RecordMatchingSection({ form, action, setCrm }: { form: Form; action: CrmAction; setCrm: SetCrm }) {
-  const defaultKeys = getDefaultMatchKeys(action);
-  if (defaultKeys.length === 0) return null;
-
-  const selected = new Set(form.crm.matchKeys);
-  const toggle = (key: string, on: boolean) => {
-    const next = on ? [...selected, key] : [...selected].filter((k) => k !== key);
-    setCrm({ matchKeys: next });
-  };
-
-  return (
-    <section className="rounded-lg border border-border bg-background p-2.5">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Record Matching</div>
-      <p className="mt-1 text-[11px] text-muted-foreground">Match incoming submissions to existing records by:</p>
-      <div className="mt-2 space-y-1.5">
-        {defaultKeys.map((key) => {
-          const prop = findProp(key);
-          return (
-            <label key={key} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={selected.has(key)}
-                onChange={(e) => toggle(key, e.target.checked)}
-              />
-              {prop?.label ?? key}
-            </label>
-          );
-        })}
-      </div>
-      <Labeled label="When a match is found:">
-        <select
-          value={form.crm.matchFoundAction ?? "link"}
-          onChange={(e) => setCrm({ matchFoundAction: e.target.value as Form["crm"]["matchFoundAction"] })}
-          className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
-        >
-          <option value="link">Link to existing record</option>
-          <option value="link_update">Link and update fields</option>
-          <option value="ignore">Ignore match (always create new)</option>
-        </select>
-      </Labeled>
-    </section>
-  );
-}
-
-// Auto-generated from the entity's select and checkbox properties.
+// Auto-generated from the entity's select and checkbox properties. Collapses to
+// a summary chip when the form already carries starter defaults.
 function DefaultsSection({ form, entity, setCrm }: { form: Form; entity: NonNullable<ReturnType<typeof entityForAction>>; setCrm: SetCrm }) {
   const props = getPropertiesForEntity(entity).filter(
     (p) => (p.defaultFieldType === "select" && p.options?.length) || p.defaultFieldType === "checkbox",
   );
+  const defaultsEntries = Object.entries(form.crm.defaults);
+  // Pre-configured (has defaults) → collapsed; none → expanded. User edits keep it open.
+  const [open, setOpen] = useState(defaultsEntries.length === 0);
   if (props.length === 0) return null;
 
-  const setDefault = (id: string, value: string | boolean) =>
+  const setDefault = (id: string, value: string | boolean) => {
+    setOpen(true);
     setCrm({ defaults: { ...form.crm.defaults, [id]: value } });
+  };
+
+  const summary = defaultsEntries.map(([k, v]) => `${k}=${v}`).join(", ");
 
   return (
     <section className="rounded-lg border border-border bg-background p-2.5">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Defaults</div>
-      <div className="mt-2 space-y-1.5">
-        {props.map((p) => {
-          const current = form.crm.defaults[p.id];
-          if (p.defaultFieldType === "checkbox") {
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Defaults</span>
+        {open ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+      </button>
+
+      {!open && defaultsEntries.length > 0 && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Defaults configured ({summary}). Click to edit.
+        </p>
+      )}
+
+      {open && (
+        <div className="mt-2 space-y-1.5">
+          {props.map((p) => {
+            const current = form.crm.defaults[p.id];
+            if (p.defaultFieldType === "checkbox") {
+              return (
+                <label key={p.id} className="flex items-center justify-between gap-2 py-1 text-sm">
+                  <span>Default {p.label}</span>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={current === true}
+                    onChange={(e) => setDefault(p.id, e.target.checked)}
+                  />
+                </label>
+              );
+            }
             return (
-              <label key={p.id} className="flex items-center justify-between gap-2 py-1 text-sm">
-                <span>Default {p.label}</span>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-primary"
-                  checked={current === true}
-                  onChange={(e) => setDefault(p.id, e.target.checked)}
-                />
-              </label>
+              <Labeled key={p.id} label={`Default ${p.label}`}>
+                <select
+                  value={typeof current === "string" ? current : ""}
+                  onChange={(e) => setDefault(p.id, e.target.value)}
+                  className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
+                >
+                  <option value="">— None —</option>
+                  {p.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Labeled>
             );
-          }
-          return (
-            <Labeled key={p.id} label={`Default ${p.label}`}>
-              <select
-                value={typeof current === "string" ? current : ""}
-                onChange={(e) => setDefault(p.id, e.target.value)}
-                className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
-              >
-                <option value="">— None —</option>
-                {p.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </Labeled>
-          );
-        })}
-      </div>
+          })}
+        </div>
+      )}
     </section>
   );
 }
 
-// Maps form fields on the canvas onto the entity's catalog properties.
+// Maps form fields on the canvas onto the entity's catalog properties. Shows a
+// focused default view (mapped + commonly-used) and auto-suggests mappings for
+// newly-added fields.
 function FieldMappingSection({ form, entity, setCrm }: { form: Form; entity: NonNullable<ReturnType<typeof entityForAction>>; setCrm: SetCrm }) {
   const includedFields = form.sections.flatMap((s) => getSectionFields(s).filter((f) => f.included && f.type !== "hidden"));
   const props = getPropertiesForEntity(entity);
 
-  // fieldMap is keyed by property id → form field id.
+  const [showAll, setShowAll] = useState(false);
+  const [autoMapped, setAutoMapped] = useState<Set<string>>(new Set());
+  const processedRef = useRef<Set<string>>(new Set());
+  // Always-latest fieldMap so the auto-map effect merges onto current state.
+  const fieldMapRef = useRef(form.crm.fieldMap);
+  fieldMapRef.current = form.crm.fieldMap;
+
+  // Auto-map newly-added fields. Keyed on a signature of field ids+labels so the
+  // effect only runs when fields actually change, not on every render.
+  const fieldSig = includedFields.map((f) => `${f.id}:${f.displayName}`).join("|");
+  useEffect(() => {
+    const base = { ...fieldMapRef.current };
+    const mappedFieldIds = new Set(Object.values(base));
+    const added: string[] = [];
+    for (const f of includedFields) {
+      if (processedRef.current.has(f.id)) continue;
+      processedRef.current.add(f.id);
+      if (mappedFieldIds.has(f.id)) continue; // already mapped (seed or manual)
+      const sug = suggestFieldMapping(f.displayName, entity);
+      if (!sug || base[sug.propertyId]) continue; // no match, or property already taken
+      base[sug.propertyId] = f.id;
+      mappedFieldIds.add(f.id);
+      added.push(sug.propertyId);
+    }
+    if (added.length) {
+      setCrm({ fieldMap: base });
+      setAutoMapped((prev) => { const n = new Set(prev); added.forEach((id) => n.add(id)); return n; });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldSig, entity]);
+
   const setMapping = (propertyId: string, fieldId: string) => {
     const next = { ...form.crm.fieldMap };
     if (fieldId) next[propertyId] = fieldId;
     else delete next[propertyId];
     setCrm({ fieldMap: next });
+    // A manual change takes ownership — drop the auto-mapped badge.
+    setAutoMapped((prev) => { const n = new Set(prev); n.delete(propertyId); return n; });
   };
+
+  const visible = showAll ? props : props.filter((p) => p.commonlyUsed || form.crm.fieldMap[p.id]);
+  const hiddenCount = props.length - visible.length;
 
   return (
     <section className="rounded-lg border border-border bg-background overflow-hidden">
@@ -264,7 +290,7 @@ function FieldMappingSection({ form, entity, setCrm }: { form: Form; entity: Non
         <div className="bg-muted/60 px-2 py-1.5">Populate from</div>
       </div>
       <div className="max-h-72 divide-y divide-border overflow-y-auto">
-        {props.map((p) => (
+        {visible.map((p) => (
           <div key={p.id} className="grid grid-cols-2 gap-px bg-border">
             <div className="flex flex-col justify-center bg-background px-2 py-1.5">
               <span className="flex items-center gap-1 text-[11px] font-medium truncate">
@@ -292,10 +318,98 @@ function FieldMappingSection({ form, entity, setCrm }: { form: Form; entity: Non
                   <option key={f.id} value={f.id}>{f.displayName}</option>
                 ))}
               </select>
+              {autoMapped.has(p.id) && form.crm.fieldMap[p.id] && (
+                <span className="mt-0.5 inline-flex items-center gap-0.5 text-[9px] font-medium text-purple-600">
+                  <Sparkles className="h-2.5 w-2.5" /> Auto-mapped
+                </span>
+              )}
             </div>
           </div>
         ))}
       </div>
+      {(hiddenCount > 0 || showAll) && (
+        <button
+          onClick={() => setShowAll((s) => !s)}
+          className="flex w-full items-center justify-center gap-0.5 border-t border-border bg-muted/30 px-2 py-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+        >
+          {showAll
+            ? <>Show less <ChevronUp className="h-3 w-3" /></>
+            : <>Show all properties ({hiddenCount} more) <ChevronDown className="h-3 w-3" /></>}
+        </button>
+      )}
+    </section>
+  );
+}
+
+// Plain-English info chip summarizing duplicate-matching behavior.
+function MatchingChip({ action, matchFoundAction }: { action: CrmAction; matchFoundAction?: Form["crm"]["matchFoundAction"] }) {
+  return (
+    <div className="flex items-start gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+      <Info className="mt-0.5 h-3 w-3 shrink-0" />
+      <span><span className="font-medium text-foreground">Duplicate matching:</span> {getMatchingSummary(action, matchFoundAction ?? undefined)} Edit in Advanced settings.</span>
+    </div>
+  );
+}
+
+// Collapsed-by-default disclosure holding the Record Matching controls.
+function AdvancedSettings({ form, action, setCrm }: { form: Form; action: CrmAction; setCrm: SetCrm }) {
+  const [open, setOpen] = useState(false);
+  const defaultKeys = getDefaultMatchKeys(action);
+  const selected = new Set(form.crm.matchKeys);
+  const toggle = (key: string, on: boolean) => {
+    const next = on ? [...selected, key] : [...selected].filter((k) => k !== key);
+    setCrm({ matchKeys: next });
+  };
+
+  return (
+    <section className="rounded-lg border border-border bg-background">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between px-2.5 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="flex items-center gap-1.5"><Settings className="h-3.5 w-3.5" /> Advanced settings</span>
+        {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+      </button>
+
+      {open && (
+        <div className="space-y-2.5 border-t border-border p-2.5">
+          <p className="text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground">Matching defaults applied:</span>{" "}
+            {getMatchingSummary(action, form.crm.matchFoundAction ?? undefined)}
+          </p>
+
+          {defaultKeys.length > 0 && (
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Record Matching</div>
+              <p className="mt-1 text-[11px] text-muted-foreground">Match incoming submissions to existing records by:</p>
+              <div className="mt-2 space-y-1.5">
+                {defaultKeys.map((key) => {
+                  const prop = findProp(key);
+                  return (
+                    <label key={key} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        checked={selected.has(key)}
+                        onChange={(e) => toggle(key, e.target.checked)}
+                      />
+                      {prop?.label ?? key}
+                    </label>
+                  );
+                })}
+              </div>
+              <Labeled label="When a match is found:">
+                <select
+                  value={form.crm.matchFoundAction ?? "link"}
+                  onChange={(e) => setCrm({ matchFoundAction: e.target.value as Form["crm"]["matchFoundAction"] })}
+                  className="w-full rounded-md border border-border px-2.5 py-1.5 text-sm"
+                >
+                  <option value="link">Link to existing record</option>
+                  <option value="link_update">Link and update fields</option>
+                  <option value="ignore">Ignore match (always create new)</option>
+                </select>
+              </Labeled>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

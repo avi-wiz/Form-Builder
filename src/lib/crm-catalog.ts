@@ -1021,6 +1021,84 @@ export function getDefaultMatchKeys(action: CrmAction): string[] {
   return MATCH_KEYS[entity] ?? [];
 }
 
+export type MatchFoundAction = "link" | "link_update" | "ignore";
+
+// What to do when a duplicate match is found, by entity. Entities that always
+// create a new record (no match keys) return undefined.
+export function getDefaultMatchFoundAction(action: CrmAction): MatchFoundAction | undefined {
+  const entity = entityForAction(action);
+  if (entity === "retailer_account" || entity === "contact" || entity === "credit_application") {
+    return "link_update";
+  }
+  return undefined;
+}
+
+function joinWithAnd(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+// Plain-English summary of the duplicate-matching behavior for a form.
+export function getMatchingSummary(action: CrmAction, matchFoundAction?: MatchFoundAction): string {
+  const keys = getDefaultMatchKeys(action);
+  if (keys.length === 0) return "Always creating a new record (no duplicate matching).";
+  const labels = keys.map((k) => CRM_PROPERTIES.find((p) => p.id === k)?.label ?? k);
+  const behavior =
+    matchFoundAction === "link" ? "link to the existing record"
+    : matchFoundAction === "ignore" ? "ignore the match and create a new record"
+    : "link and update the existing record";
+  return `Matching by ${joinWithAnd(labels)}. If a match is found, ${behavior}.`;
+}
+
+// ── Auto-mapping: suggest a catalog property for a form field's label ─────────
+// Normalize a label for comparison: lowercase, drop trailing colons/asterisks
+// and the qualifier word "your", collapse punctuation/whitespace. We deliberately
+// do NOT strip "company" — "Company Name" should stay distinct from "Name" so it
+// doesn't wrongly auto-map to "Legal Name".
+function normalizeLabel(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[:*\s]+$/g, "")
+    .replace(/\byour\b/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function labelSimilarity(a: string, b: string): number {
+  const na = normalizeLabel(a);
+  const nb = normalizeLabel(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  const ta = new Set(na.split(" "));
+  const tb = new Set(nb.split(" "));
+  let shared = 0;
+  for (const t of ta) if (tb.has(t)) shared++;
+  if (shared === 0) return 0;
+  const dice = (2 * shared) / (ta.size + tb.size);
+  const containment = (shared / Math.min(ta.size, tb.size)) * 0.85;
+  return Math.max(dice, containment);
+}
+
+const MAPPING_CONFIDENCE_THRESHOLD = 0.7;
+
+// Returns the highest-confidence catalog property for a form field label within
+// the given entity, or null if nothing clears the threshold.
+export function suggestFieldMapping(
+  formFieldLabel: string,
+  entity: EntityType,
+): { propertyId: string; confidence: number } | null {
+  let best: { propertyId: string; confidence: number } | null = null;
+  for (const p of getPropertiesForEntity(entity)) {
+    const confidence = labelSimilarity(formFieldLabel, p.label);
+    if (confidence >= MAPPING_CONFIDENCE_THRESHOLD && (!best || confidence > best.confidence)) {
+      best = { propertyId: p.id, confidence };
+    }
+  }
+  return best;
+}
+
 // Placeholder options for lookup fields in preview/canvas (no real backend).
 const LOOKUP_PLACEHOLDERS: Partial<Record<EntityType, string[]>> = {
   retailer_account: ["Acme Lighting Co.", "Pacific Coast Imports", "Bright Decor LLC"],
